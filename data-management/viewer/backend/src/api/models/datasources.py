@@ -101,6 +101,8 @@ class TrajectoryPoint(BaseModel):
     joint_velocities: list[float] = Field(description="Joint velocities array")
     end_effector_pose: list[float] = Field(description="End-effector pose (position + orientation)")
     gripper_state: float = Field(ge=0, le=1, description="Gripper state (0=open, 1=closed)")
+    action: list[float] = Field(default_factory=list, description="Action array")
+    gripper_is_closed: bool | None = Field(default=None, description="Whether the gripper is closed")
 
 
 class FrameInsertion(BaseModel):

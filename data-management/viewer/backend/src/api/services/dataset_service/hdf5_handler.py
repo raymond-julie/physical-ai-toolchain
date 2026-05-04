@@ -245,6 +245,7 @@ class HDF5FormatHandler:
                 joint_velocities=hdf5_data.joint_velocities,
                 end_effector_poses=hdf5_data.end_effector_pose,
                 gripper_states=hdf5_data.gripper_states,
+                actions=hdf5_data.actions,
                 clamp_gripper=True,
             )
 
@@ -289,6 +290,7 @@ class HDF5FormatHandler:
                 joint_velocities=hdf5_data.joint_velocities,
                 end_effector_poses=hdf5_data.end_effector_pose,
                 gripper_states=hdf5_data.gripper_states,
+                actions=hdf5_data.actions,
                 clamp_gripper=True,
             )
         except Exception as e:

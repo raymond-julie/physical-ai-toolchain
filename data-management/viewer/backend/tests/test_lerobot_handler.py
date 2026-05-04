@@ -108,6 +108,8 @@ class TestLoadEpisode:
         assert pt.frame >= 0
         assert len(pt.joint_positions) > 0
         assert len(pt.end_effector_pose) == 6
+        assert len(pt.action) > 0
+        assert pt.gripper_is_closed is None or isinstance(pt.gripper_is_closed, bool)
 
     def test_video_urls(self, handler):
         ep = handler.load_episode(DATASET_ID, 0)

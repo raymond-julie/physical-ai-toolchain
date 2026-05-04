@@ -27,6 +27,8 @@ def build_trajectory(
     joint_velocities: NDArray[np.float64] | None = None,
     end_effector_poses: NDArray[np.float64] | None = None,
     gripper_states: NDArray[np.float64] | None = None,
+    actions: NDArray[np.float64] | None = None,
+    gripper_is_closed: NDArray[np.bool_] | None = None,
     clamp_gripper: bool = False,
 ) -> list[TrajectoryPoint]:
     """
@@ -57,7 +59,9 @@ def build_trajectory(
         joint_pos = joint_positions[i].tolist()
         joint_vel = joint_velocities[i].tolist() if joint_velocities is not None else [0.0] * num_joints
         ee_pose = end_effector_poses[i].tolist() if end_effector_poses is not None else [0.0] * 6
-        gripper = float(gripper_states[i]) if gripper_states is not None else 0.0
+        action = actions[i].tolist() if actions is not None else []
+        gripper_closed = bool(gripper_is_closed[i]) if gripper_is_closed is not None else None
+        gripper = float(gripper_states[i]) if gripper_states is not None else float(gripper_closed or False)
         if clamp_gripper:
             gripper = max(0.0, min(1.0, gripper))
 
@@ -69,6 +73,8 @@ def build_trajectory(
                 joint_velocities=joint_vel,
                 end_effector_pose=ee_pose,
                 gripper_state=gripper,
+                action=action,
+                gripper_is_closed=gripper_closed,
             )
         )
 
@@ -81,23 +87,23 @@ class DatasetFormatHandler(Protocol):
 
     def can_handle(self, dataset_path: Path) -> bool:
         """Return True if this handler supports the dataset at the given path."""
-        pass
+        ...
 
     def has_loader(self, dataset_id: str) -> bool:
         """Return True if a loader is already initialized for this dataset."""
-        pass
+        ...
 
     def discover(self, dataset_id: str, dataset_path: Path) -> DatasetInfo | None:
         """Build DatasetInfo from the dataset directory. Returns None on failure."""
-        pass
+        ...
 
     def get_loader(self, dataset_id: str, dataset_path: Path) -> bool:
         """Get or create the underlying loader for a dataset. Returns True if successful."""
-        pass
+        ...
 
     def list_episodes(self, dataset_id: str) -> tuple[list[int], dict[int, dict]]:
         """Return (sorted episode indices, {index: metadata dict})."""
-        pass
+        ...
 
     def load_episode(
         self,
@@ -106,11 +112,11 @@ class DatasetFormatHandler(Protocol):
         dataset_info: DatasetInfo | None = None,
     ) -> EpisodeData | None:
         """Load complete episode data. Returns None on failure."""
-        pass
+        ...
 
     def get_trajectory(self, dataset_id: str, episode_idx: int) -> list[TrajectoryPoint]:
         """Load trajectory data only. Returns empty list on failure."""
-        pass
+        ...
 
     def get_frame_image(
         self,
@@ -120,12 +126,12 @@ class DatasetFormatHandler(Protocol):
         camera: str,
     ) -> bytes | None:
         """Get a single JPEG frame image. Returns None if unavailable."""
-        pass
+        ...
 
     def get_cameras(self, dataset_id: str, episode_idx: int) -> list[str]:
         """List available camera names for an episode."""
-        pass
+        ...
 
     def get_video_path(self, dataset_id: str, episode_idx: int, camera: str) -> str | None:
         """Get filesystem path to a video file. Returns None if unavailable."""
-        pass
+        ...

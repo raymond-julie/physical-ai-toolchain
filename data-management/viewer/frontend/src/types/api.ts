@@ -100,6 +100,10 @@ export interface TrajectoryPoint {
   endEffectorPose: number[]
   /** Gripper state (0 = open, 1 = closed) */
   gripperState: number
+  /** Action array */
+  action?: number[]
+  /** Whether the gripper is closed */
+  gripperIsClosed?: boolean | null
 }
 
 /** Complete episode data for viewing */

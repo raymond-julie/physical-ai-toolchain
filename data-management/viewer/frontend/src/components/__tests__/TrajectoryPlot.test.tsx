@@ -62,16 +62,20 @@ beforeEach(() => {
         timestamp: 0,
         jointPositions: Array.from({ length: 17 }, (_, index) => index),
         jointVelocities: Array.from({ length: 17 }, (_, index) => index / 10),
+        action: Array.from({ length: 7 }, (_, index) => index / 20),
         endEffectorPose: [],
         gripperState: 0,
+        gripperIsClosed: false,
       },
       {
         frame: 1,
         timestamp: 0.1,
         jointPositions: Array.from({ length: 17 }, (_, index) => index + 1),
         jointVelocities: Array.from({ length: 17 }, (_, index) => (index + 1) / 10),
+        action: Array.from({ length: 7 }, (_, index) => (index + 1) / 20),
         endEffectorPose: [],
         gripperState: 1,
+        gripperIsClosed: true,
       },
     ],
   })
@@ -200,6 +204,33 @@ describe('TrajectoryPlot', () => {
     expect(velocityData[0]?.joint_1).toBe(0.1)
     expect(velocityData[1]?.joint_0).toBe(0.1)
     expect(velocityData[1]?.joint_1).toBe(0.2)
+  })
+
+  it('plots action arrays and gripper state signals', () => {
+    render(
+      <div style={{ width: 600, height: 300 }}>
+        <TrajectoryPlot className="h-full" />
+      </div>,
+    )
+
+    expect(screen.getByTestId('line-gripper_state')).toBeInTheDocument()
+    expect(screen.getByTestId('line-gripper_is_closed')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Action' }))
+
+    expect(screen.getByRole('button', { name: 'Action 0' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Action 6' })).toBeInTheDocument()
+    expect(screen.getByTestId('line-action_0')).toBeInTheDocument()
+    expect(screen.getByTestId('line-action_6')).toBeInTheDocument()
+
+    const actionData = JSON.parse(screen.getByTestId('line-chart-data').textContent ?? '[]') as Array<
+      Record<string, number>
+    >
+
+    expect(actionData[0]?.action_0).toBe(0)
+    expect(actionData[1]?.action_6).toBe(0.35)
+    expect(actionData[0]?.gripper_is_closed).toBe(0)
+    expect(actionData[1]?.gripper_is_closed).toBe(1)
   })
 
   it('renders the trajectory tooltip as a portal to escape overflow clipping', () => {

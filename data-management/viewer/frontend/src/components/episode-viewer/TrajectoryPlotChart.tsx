@@ -18,6 +18,10 @@ import { TrajectoryPlotSelectionOverlay } from './TrajectoryPlotSelectionOverlay
 const TRAJECTORY_CHART_MIN_HEIGHT = 60
 const TRAJECTORY_CHART_INITIAL_DIMENSION = { width: 320, height: TRAJECTORY_CHART_MIN_HEIGHT }
 const TOOLTIP_OFFSET = 12
+const AUXILIARY_LINES = [
+  { key: 'gripper_state', name: 'gripper state', color: '#f59e0b' },
+  { key: 'gripper_is_closed', name: 'gripper.is_closed', color: '#a855f7' },
+]
 
 function TrajectoryTooltipPortal({
   active,
@@ -79,6 +83,7 @@ interface TrajectoryPlotChartProps {
   resolveLabel: (index: number) => string
   trajectoryAdjustments: Map<number, unknown>
   showVelocity: boolean
+  showAction: boolean
   showNormalized: boolean
   selectedRange: [number, number] | null
   selectionHighlight: { left: string; width: string } | null
@@ -100,6 +105,7 @@ export function TrajectoryPlotChart({
   resolveLabel,
   trajectoryAdjustments,
   showVelocity,
+  showAction,
   showNormalized,
   selectedRange,
   selectionHighlight,
@@ -146,7 +152,7 @@ export function TrajectoryPlotChart({
           <YAxis
             stroke="hsl(var(--muted-foreground))"
             fontSize={12}
-            domain={showNormalized && !showVelocity ? [0, 1] : ['auto', 'auto']}
+            domain={showNormalized && !showVelocity && !showAction ? [0, 1] : ['auto', 'auto']}
           />
           <Tooltip
             isAnimationActive={false}
@@ -171,18 +177,38 @@ export function TrajectoryPlotChart({
             strokeDasharray="4 4"
           />
 
-          {selectedJoints.map((jointIdx) => (
-            <Line
-              key={jointIdx}
-              type="monotone"
-              dataKey={`joint_${jointIdx}`}
-              name={resolveLabel(jointIdx)}
-              stroke={JOINT_COLORS[jointIdx % JOINT_COLORS.length]}
-              dot={false}
-              strokeWidth={1.5}
-              isAnimationActive={false}
-            />
-          ))}
+          {selectedJoints.map((jointIdx) => {
+            const dataKey = showAction ? `action_${jointIdx}` : `joint_${jointIdx}`
+
+            return (
+              <Line
+                key={dataKey}
+                type="monotone"
+                dataKey={dataKey}
+                name={resolveLabel(jointIdx)}
+                stroke={JOINT_COLORS[jointIdx % JOINT_COLORS.length]}
+                dot={false}
+                strokeWidth={1.5}
+                isAnimationActive={false}
+              />
+            )
+          })}
+
+          {AUXILIARY_LINES.filter(({ key }) => chartData.some((point) => key in point)).map(
+            ({ key, name, color }) => (
+              <Line
+                key={key}
+                type="stepAfter"
+                dataKey={key}
+                name={name}
+                stroke={color}
+                dot={false}
+                strokeWidth={1.75}
+                strokeDasharray="5 3"
+                isAnimationActive={false}
+              />
+            ),
+          )}
         </LineChart>
       </ResponsiveContainer>
       <TrajectoryPlotSelectionOverlay

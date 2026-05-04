@@ -5,6 +5,9 @@ interface TrajectoryPointLike {
   timestamp: number
   jointPositions: number[]
   jointVelocities: number[]
+  action?: number[]
+  gripperState?: number
+  gripperIsClosed?: boolean | null
 }
 
 interface BuildTrajectoryChartDataOptions {
@@ -12,6 +15,7 @@ interface BuildTrajectoryChartDataOptions {
   trajectoryAdjustments: ReadonlyMap<number, TrajectoryAdjustment>
   showVelocity: boolean
   showNormalized: boolean
+  showAction?: boolean
 }
 
 export function applyTrajectoryAdjustment(
@@ -57,9 +61,14 @@ export function buildTrajectoryChartData({
   trajectoryAdjustments,
   showVelocity,
   showNormalized,
+  showAction = false,
 }: BuildTrajectoryChartDataOptions) {
   const seriesValues = trajectoryData.map((point) => {
     const adjustment = trajectoryAdjustments.get(point.frame)
+
+    if (showAction) {
+      return point.action ?? []
+    }
 
     return showVelocity
       ? point.jointVelocities
@@ -68,7 +77,7 @@ export function buildTrajectoryChartData({
         )
   })
 
-  const shouldNormalizePositions = showNormalized && !showVelocity
+  const shouldNormalizePositions = showNormalized && !showVelocity && !showAction
   const normalizedRanges = shouldNormalizePositions
     ? (seriesValues[0]?.map((_, jointIndex) => {
         const values = seriesValues.map((pointValues) => pointValues[jointIndex])
@@ -88,18 +97,29 @@ export function buildTrajectoryChartData({
       hasAdjustment: !!adjustment,
     }
     const pointValues =
-      seriesValues[pointIndex] ?? (showVelocity ? point.jointVelocities : point.jointPositions)
+      seriesValues[pointIndex] ??
+      (showAction ? (point.action ?? []) : showVelocity ? point.jointVelocities : point.jointPositions)
 
     pointValues.forEach((value, jointIndex) => {
+      const dataKey = showAction ? `action_${jointIndex}` : `joint_${jointIndex}`
+
       if (shouldNormalizePositions) {
         const range = normalizedRanges[jointIndex]
 
-        data[`joint_${jointIndex}`] = range ? normalizeSeries(value, range.min, range.max) : value
+        data[dataKey] = range ? normalizeSeries(value, range.min, range.max) : value
         return
       }
 
-      data[`joint_${jointIndex}`] = value
+      data[dataKey] = value
     })
+
+    if (point.gripperState !== undefined) {
+      data.gripper_state = point.gripperState
+    }
+
+    if (point.gripperIsClosed !== undefined && point.gripperIsClosed !== null) {
+      data.gripper_is_closed = point.gripperIsClosed ? 1 : 0
+    }
 
     return data
   })

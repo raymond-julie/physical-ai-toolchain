@@ -51,6 +51,38 @@ describe('trajectory-plot-utils', () => {
     expect(chartData[0]).toMatchObject({ joint_0: 0.1, joint_1: 0.2 })
   })
 
+  it('adds action and gripper signals to chart data', () => {
+    const chartData = buildTrajectoryChartData({
+      trajectoryData: [
+        {
+          frame: 0,
+          timestamp: 0,
+          jointPositions: [0, 2],
+          jointVelocities: [0.1, 0.2],
+          action: [0.4, 0.8],
+          gripperState: 0.25,
+          gripperIsClosed: false,
+        },
+        {
+          frame: 1,
+          timestamp: 0.1,
+          jointPositions: [1, 4],
+          jointVelocities: [0.2, 0.4],
+          action: [0.6, 1.2],
+          gripperState: 0.75,
+          gripperIsClosed: true,
+        },
+      ],
+      trajectoryAdjustments: new Map(),
+      showVelocity: false,
+      showNormalized: false,
+      showAction: true,
+    })
+
+    expect(chartData[0]).toMatchObject({ action_0: 0.4, action_1: 0.8, gripper_state: 0.25, gripper_is_closed: 0 })
+    expect(chartData[1]).toMatchObject({ action_0: 0.6, action_1: 1.2, gripper_state: 0.75, gripper_is_closed: 1 })
+  })
+
   it('normalizes values and resolves drag selection ranges predictably', () => {
     expect(normalizeSeries(6, 2, 10)).toBe(0.5)
     expect(applyTrajectoryAdjustment(3, 0, { frameIndex: 0, rightArmDelta: [2, 0, 0] })).toBe(5)

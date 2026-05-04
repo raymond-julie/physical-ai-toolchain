@@ -18,7 +18,10 @@ import { useJointConfigStore } from '@/stores/joint-config-store'
 
 import { getJointLabel } from './joint-constants'
 import { buildTrajectoryChartData } from './trajectory-plot-utils'
+import type { TrajectoryPlotMode } from './TrajectoryPlotControls'
 import { useTrajectoryPlotSelection } from './useTrajectoryPlotSelection'
+
+const ACTION_GROUPS = [{ id: 'actions', label: 'Action', indices: [] }]
 
 interface UseTrajectoryPlotStateOptions {
   onSaved?: () => void
@@ -54,7 +57,7 @@ export function useTrajectoryPlotState({
   const saveDefaults = useSaveJointConfigDefaults()
 
   const [selectedJoints, setSelectedJoints] = useState<number[]>([])
-  const [showVelocity, setShowVelocity] = useState(false)
+  const [mode, setMode] = useState<TrajectoryPlotMode>('position')
   const [showNormalized, setShowNormalized] = useState(true)
   const [defaultsOpen, setDefaultsOpen] = useState(false)
   const [plotArea, setPlotArea] = useState<TrajectoryPlotArea | null>(null)
@@ -70,8 +73,8 @@ export function useTrajectoryPlotState({
   )
 
   const resolveLabel = useCallback(
-    (idx: number) => jointConfig.labels[String(idx)] ?? getJointLabel(idx),
-    [jointConfig.labels],
+    (idx: number) => (mode === 'action' ? `Action ${idx}` : jointConfig.labels[String(idx)] ?? getJointLabel(idx)),
+    [jointConfig.labels, mode],
   )
 
   const chartData = useMemo(() => {
@@ -82,10 +85,11 @@ export function useTrajectoryPlotState({
     return buildTrajectoryChartData({
       trajectoryData: currentEpisode.trajectoryData,
       trajectoryAdjustments,
-      showVelocity,
+      showVelocity: mode === 'velocity',
       showNormalized,
+      showAction: mode === 'action',
     })
-  }, [currentEpisode?.trajectoryData, showNormalized, showVelocity, trajectoryAdjustments])
+  }, [currentEpisode?.trajectoryData, mode, showNormalized, trajectoryAdjustments])
 
   const jointCount = useMemo(() => {
     if (!currentEpisode?.trajectoryData?.[0]) {
@@ -93,6 +97,30 @@ export function useTrajectoryPlotState({
     }
     return currentEpisode.trajectoryData[0].jointPositions.length
   }, [currentEpisode?.trajectoryData])
+
+  const actionCount = useMemo(() => {
+    if (!currentEpisode?.trajectoryData?.[0]?.action) {
+      return 0
+    }
+    return currentEpisode.trajectoryData[0].action.length
+  }, [currentEpisode?.trajectoryData])
+
+  const signalCount = mode === 'action' ? actionCount : jointCount
+  const selectorLabels = useMemo(() => {
+    if (mode !== 'action') {
+      return jointConfig.labels
+    }
+
+    return Object.fromEntries(Array.from({ length: actionCount }, (_, index) => [String(index), `Action ${index}`]))
+  }, [actionCount, jointConfig.labels, mode])
+
+  const selectorGroups = useMemo(() => {
+    if (mode !== 'action') {
+      return jointConfig.groups
+    }
+
+    return [{ ...ACTION_GROUPS[0], indices: Array.from({ length: actionCount }, (_, index) => index) }]
+  }, [actionCount, jointConfig.groups, mode])
 
   const autoSelectedJoints = useMemo(
     () =>
@@ -105,8 +133,10 @@ export function useTrajectoryPlotState({
   )
 
   useEffect(() => {
-    setSelectedJoints(autoSelectedJoints)
-  }, [autoSelectedJoints])
+    setSelectedJoints(
+      mode === 'action' ? Array.from({ length: actionCount }, (_, index) => index) : autoSelectedJoints,
+    )
+  }, [actionCount, autoSelectedJoints, mode])
 
   useEffect(() => {
     const surface = selectionSurfaceRef.current
@@ -141,7 +171,7 @@ export function useTrajectoryPlotState({
     currentEpisode?.meta.length,
     selectedJoints.length,
     showNormalized,
-    showVelocity,
+    mode,
   ])
 
   const frameFromClientX = useCallback(
@@ -209,12 +239,16 @@ export function useTrajectoryPlotState({
   )
 
   const toggleNormalization = useCallback(() => {
-    if (showVelocity) {
+    if (mode !== 'position') {
       return
     }
 
     setShowNormalized((current) => !current)
-  }, [showVelocity])
+  }, [mode])
+
+  const setShowVelocity = useCallback((value: boolean) => {
+    setMode(value ? 'velocity' : 'position')
+  }, [])
 
   return {
     chartData,
@@ -226,7 +260,7 @@ export function useTrajectoryPlotState({
     deleteGroup,
     handleChartClick,
     jointConfig,
-    jointCount,
+    jointCount: signalCount,
     moveJoint,
     onCreateSubtaskFromRange,
     plotArea,
@@ -236,16 +270,22 @@ export function useTrajectoryPlotState({
     selection,
     selectionHighlight,
     selectionSurfaceRef,
+    selectorEditable: mode !== 'action',
+    selectorGroups,
+    selectorLabels,
     setDefaultsOpen,
+    setMode,
     setSelectedJoints,
     setShowVelocity,
     showNormalized,
-    showVelocity,
+    showVelocity: mode === 'velocity',
+    showAction: mode === 'action',
+    mode,
     toggleNormalization,
     trajectoryAdjustments,
     updateGroupLabel,
     updateLabel,
     withSave,
-    isNormalizationDisabled: showVelocity,
+    isNormalizationDisabled: mode !== 'position',
   }
 }

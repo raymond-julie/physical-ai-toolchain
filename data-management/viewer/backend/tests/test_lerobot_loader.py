@@ -256,6 +256,7 @@ class TestV2EpisodeLayout:
                     "task_index": [0] * length,
                     "observation.state": [[0.0] * 6 for _ in range(length)],
                     "action": [[0.0] * 6 for _ in range(length)],
+                    "observation.gripper.is_closed": [i % 2 == 1 for i in range(length)],
                 }
             )
             pq.write_table(table, root / "data" / "chunk-000" / f"episode_{ep_idx:06d}.parquet")
@@ -275,6 +276,12 @@ class TestV2EpisodeLayout:
         ep = loader.load_episode(1)
         assert ep.length == 2
         assert "observation.images.front" in ep.video_paths
+
+    def test_load_episode_extracts_gripper_closed(self, v2_dataset):
+        loader = LeRobotLoader(v2_dataset)
+        ep = loader.load_episode(0)
+
+        assert ep.gripper_is_closed.tolist() == [False, True, False]
 
     def test_get_video_path_v2(self, v2_dataset):
         loader = LeRobotLoader(v2_dataset)

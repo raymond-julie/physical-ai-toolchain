@@ -2,6 +2,8 @@ import type { JointGroup } from './joint-constants'
 import { JOINT_COLORS } from './joint-constants'
 import { JointSelector } from './JointSelector'
 
+export type TrajectoryPlotMode = 'position' | 'velocity' | 'action'
+
 interface TrajectoryPlotControlsProps {
   jointCount: number
   selectedJoints: number[]
@@ -19,11 +21,12 @@ interface TrajectoryPlotControlsProps {
     toPosition: number,
   ) => void
   onOpenDefaults: () => void
-  showVelocity: boolean
-  onSetShowVelocity: (value: boolean) => void
+  mode: TrajectoryPlotMode
+  onSetMode: (mode: TrajectoryPlotMode) => void
   showNormalized: boolean
   isNormalizationDisabled: boolean
   onToggleNormalization: () => void
+  selectorEditable?: boolean
 }
 
 export function TrajectoryPlotControls({
@@ -38,11 +41,12 @@ export function TrajectoryPlotControls({
   onDeleteGroup,
   onMoveJoint,
   onOpenDefaults,
-  showVelocity,
-  onSetShowVelocity,
+  mode,
+  onSetMode,
   showNormalized,
   isNormalizationDisabled,
   onToggleNormalization,
+  selectorEditable = true,
 }: TrajectoryPlotControlsProps) {
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -57,20 +61,20 @@ export function TrajectoryPlotControls({
           colors={JOINT_COLORS}
           groups={groups}
           labels={labels}
-          editable
-          onEditJointLabel={onEditJointLabel}
-          onEditGroupLabel={onEditGroupLabel}
-          onCreateGroup={onCreateGroup}
-          onDeleteGroup={onDeleteGroup}
-          onMoveJoint={onMoveJoint}
-          onOpenDefaults={onOpenDefaults}
+          editable={selectorEditable}
+          onEditJointLabel={selectorEditable ? onEditJointLabel : undefined}
+          onEditGroupLabel={selectorEditable ? onEditGroupLabel : undefined}
+          onCreateGroup={selectorEditable ? onCreateGroup : undefined}
+          onDeleteGroup={selectorEditable ? onDeleteGroup : undefined}
+          onMoveJoint={selectorEditable ? onMoveJoint : undefined}
+          onOpenDefaults={selectorEditable ? onOpenDefaults : undefined}
         />
       </div>
       <div className="flex w-full shrink-0 flex-wrap items-center gap-2 lg:w-auto lg:justify-end lg:self-start">
         <button
-          onClick={() => onSetShowVelocity(false)}
+          onClick={() => onSetMode('position')}
           className={
-            !showVelocity
+            mode === 'position'
               ? 'bg-primary text-primary-foreground rounded-sm px-2 py-1 text-xs'
               : 'bg-muted text-muted-foreground rounded-sm px-2 py-1 text-xs'
           }
@@ -78,14 +82,24 @@ export function TrajectoryPlotControls({
           Position
         </button>
         <button
-          onClick={() => onSetShowVelocity(true)}
+          onClick={() => onSetMode('velocity')}
           className={
-            showVelocity
+            mode === 'velocity'
               ? 'bg-primary text-primary-foreground rounded-sm px-2 py-1 text-xs'
               : 'bg-muted text-muted-foreground rounded-sm px-2 py-1 text-xs'
           }
         >
           Velocity
+        </button>
+        <button
+          onClick={() => onSetMode('action')}
+          className={
+            mode === 'action'
+              ? 'bg-primary text-primary-foreground rounded-sm px-2 py-1 text-xs'
+              : 'bg-muted text-muted-foreground rounded-sm px-2 py-1 text-xs'
+          }
+        >
+          Action
         </button>
         <button
           type="button"

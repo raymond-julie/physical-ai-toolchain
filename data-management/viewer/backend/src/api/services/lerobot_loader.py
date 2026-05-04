@@ -60,6 +60,9 @@ class LeRobotEpisodeData:
     actions: NDArray[np.float64]
     """Action array of shape (N, action_dim)."""
 
+    gripper_is_closed: NDArray[np.bool_] | None
+    """Boolean gripper closed state of shape (N,), if available."""
+
     task_index: int
     """Task index for this episode."""
 
@@ -440,6 +443,10 @@ class LeRobotLoader:
                 _column_to_numpy(table, "action") if "action" in col_names else np.zeros_like(joint_positions)
             )
 
+            gripper_is_closed: NDArray[np.bool_] | None = None
+            if "observation.gripper.is_closed" in col_names:
+                gripper_is_closed = np.asarray(table.column("observation.gripper.is_closed").to_numpy(), dtype=np.bool_)
+
             # Get task index
             task_index = int(table.column("task_index")[0].as_py()) if "task_index" in col_names else 0
 
@@ -463,6 +470,7 @@ class LeRobotLoader:
                 joint_positions=joint_positions.astype(np.float64),
                 joint_velocities=joint_velocities,
                 actions=actions.astype(np.float64),
+                gripper_is_closed=gripper_is_closed,
                 task_index=task_index,
                 video_paths=video_paths,
                 metadata={
