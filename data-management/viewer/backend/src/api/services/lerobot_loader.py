@@ -395,7 +395,7 @@ class LeRobotLoader:
 
             # Filter to requested episode
             if "episode_index" in table.column_names:
-                mask = pa.compute.equal(table.column("episode_index"), episode_index)
+                mask = pa.array([int(value) == episode_index for value in table.column("episode_index").to_pylist()])
                 table = table.filter(mask)
 
             if table.num_rows == 0:
@@ -403,7 +403,9 @@ class LeRobotLoader:
 
             # Sort by frame_index
             if "frame_index" in table.column_names:
-                sort_indices = pa.compute.sort_indices(table.column("frame_index"))
+                sort_indices = pa.array(
+                    sorted(range(table.num_rows), key=lambda idx: int(table.column("frame_index")[idx].as_py()))
+                )
                 table = table.take(sort_indices)
 
             length = table.num_rows
@@ -507,7 +509,7 @@ class LeRobotLoader:
             table = pq.read_table(full_path)
 
             if "episode_index" in table.column_names:
-                mask = pa.compute.equal(table.column("episode_index"), episode_index)
+                mask = pa.array([int(value) == episode_index for value in table.column("episode_index").to_pylist()])
                 table = table.filter(mask)
 
             length = table.num_rows
@@ -551,6 +553,38 @@ class LeRobotLoader:
 
         if video_full_path.exists():
             return video_full_path
+        return None
+
+    def get_video_time_window(self, episode_index: int, camera_key: str) -> tuple[float, float] | None:
+        """Get the timestamp window for an episode within a chunk-level video."""
+        meta_episodes_dir = self.base_path / "meta" / "episodes"
+        if not meta_episodes_dir.exists():
+            return None
+
+        from_col = f"videos/{camera_key}/from_timestamp"
+        to_col = f"videos/{camera_key}/to_timestamp"
+
+        for chunk_dir in sorted(meta_episodes_dir.iterdir()):
+            if not chunk_dir.is_dir() or not chunk_dir.name.startswith("chunk-"):
+                continue
+            for parquet_file in sorted(chunk_dir.glob("*.parquet")):
+                try:
+                    table = pq.read_table(parquet_file)
+                    if not {"episode_index", from_col, to_col}.issubset(table.column_names):
+                        continue
+                    mask = pa.array(
+                        [int(value) == episode_index for value in table.column("episode_index").to_pylist()]
+                    )
+                    row = table.filter(mask)
+                    if row.num_rows == 0:
+                        continue
+                    start = float(row.column(from_col)[0].as_py())
+                    end = float(row.column(to_col)[0].as_py())
+                    if end > start:
+                        return start, end
+                except Exception as exc:
+                    logger.warning("Failed to read video window from %s: %s", parquet_file, type(exc).__name__)
+
         return None
 
     def get_cameras(self) -> list[str]:

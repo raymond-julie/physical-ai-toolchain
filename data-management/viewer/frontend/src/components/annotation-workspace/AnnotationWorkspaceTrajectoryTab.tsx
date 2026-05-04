@@ -10,6 +10,7 @@ interface AnnotationWorkspaceTrajectoryTabProps {
   playbackCard: ReactNode
   subtaskListCard: ReactNode
   labelPanel: ReactNode
+  judgePanel: ReactNode
   languageInstructionPanel: ReactNode
   editToolsPanel: ReactNode
   selectedRange: [number, number] | null
@@ -28,6 +29,7 @@ export function AnnotationWorkspaceTrajectoryTab({
   playbackCard,
   subtaskListCard,
   labelPanel,
+  judgePanel,
   languageInstructionPanel,
   editToolsPanel,
   selectedRange,
@@ -99,6 +101,7 @@ export function AnnotationWorkspaceTrajectoryTab({
           <CardContent className="h-full overflow-y-auto p-4">
             <div className="space-y-6">
               {labelPanel}
+              <div className="border-t pt-6">{judgePanel}</div>
               <div className="border-t pt-6">{languageInstructionPanel}</div>
               <div className="border-t pt-6">{editToolsPanel}</div>
             </div>
