@@ -115,6 +115,10 @@ vi.mock('@/components/annotation-panel', () => ({
   LanguageInstructionWidget: () => <div>Language Instructions</div>,
 }))
 
+vi.mock('@/components/vlm-judge', () => ({
+  JudgePanel: () => <div>VLM Judge</div>,
+}))
+
 vi.mock('@/components/episode-viewer', () => ({
   CameraSelector: (props: Record<string, unknown>) => {
     const cameraProps = props as {

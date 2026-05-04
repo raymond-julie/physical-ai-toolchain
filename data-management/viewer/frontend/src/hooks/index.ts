@@ -76,3 +76,4 @@ export {
   useOfflineAnnotations,
   type UseOfflineAnnotationsResult,
 } from './use-offline-annotations'
+export { useRunVlmJudge, useVlmJudgeStatus, vlmJudgeKeys } from './use-vlm-judge'

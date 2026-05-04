@@ -8,6 +8,7 @@ import { AnnotationWorkspaceTrajectoryTab } from '@/components/annotation-worksp
 import { ExportDialog } from '@/components/export'
 import { DetectionPanel } from '@/components/object-detection'
 import { Tabs, TabsContent } from '@/components/ui/tabs'
+import { JudgePanel } from '@/components/vlm-judge'
 
 import type { useAnnotationWorkspaceShell } from './useAnnotationWorkspaceShell'
 
@@ -71,6 +72,9 @@ export function AnnotationWorkspaceContent({ shell }: AnnotationWorkspaceContent
   )
 
   const trajectoryLabelPanel = <LabelPanel episodeIndex={currentEpisode.meta.index} />
+  const trajectoryJudgePanel = (
+    <JudgePanel datasetId={currentDataset.id} episodeIndex={currentEpisode.meta.index} />
+  )
   const trajectoryLanguageInstructionPanel = <LanguageInstructionWidget />
   const trajectoryEditToolsPanel = (
     <AnnotationWorkspaceEditToolsPanel
@@ -105,6 +109,7 @@ export function AnnotationWorkspaceContent({ shell }: AnnotationWorkspaceContent
           playbackCard={trajectoryPlaybackCard}
           subtaskListCard={trajectorySubtaskListCard}
           labelPanel={trajectoryLabelPanel}
+          judgePanel={trajectoryJudgePanel}
           languageInstructionPanel={trajectoryLanguageInstructionPanel}
           editToolsPanel={trajectoryEditToolsPanel}
           selectedRange={shell.playback.selectedRange}

@@ -224,7 +224,8 @@ class LeRobotFormatHandler:
         if loader is None:
             return None
 
-        video_path = loader.get_video_path(episode_idx, camera)
+        resolved_video_path = self.get_video_path(dataset_id, episode_idx, camera)
+        video_path = Path(resolved_video_path) if resolved_video_path is not None else None
         if video_path is None:
             logger.warning(
                 "No video for episode %s",
@@ -334,9 +335,86 @@ class LeRobotFormatHandler:
 
         try:
             video_path = loader.get_video_path(episode_idx, camera)
-            if video_path is not None:
+            if video_path is None:
+                return None
+
+            window = loader.get_video_time_window(episode_idx, camera)
+            if window is None:
                 return str(video_path)
+
+            clip_path = self._video_cache_path(dataset_id, episode_idx, camera)
+            if clip_path is None:
+                return str(video_path)
+
+            if clip_path.exists():
+                return str(clip_path)
+
+            if self._generate_episode_video_clip(video_path, window, clip_path):
+                return str(clip_path)
+
+            return str(video_path)
         except Exception as e:
             logger.warning("Failed to get video path: %s", str(e))
 
         return None
+
+    def _video_cache_path(self, dataset_id: str, episode_idx: int, camera: str) -> Path | None:
+        loader = self._get_loader(dataset_id)
+        if loader is None:
+            return None
+
+        safe_camera = camera.replace("/", "_").replace("\\", "_")
+        return loader.base_path / "meta" / "videos" / safe_camera / f"episode_{episode_idx:06d}.mp4"
+
+    @staticmethod
+    def _generate_episode_video_clip(source_path: Path, window: tuple[float, float], clip_path: Path) -> bool:
+        ffmpeg = LeRobotFormatHandler._resolve_ffmpeg()
+        if ffmpeg is None:
+            logger.warning("ffmpeg is not available for LeRobot video clipping")
+            return False
+
+        start, end = window
+        duration = end - start
+        if duration <= 0:
+            return False
+
+        clip_path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = clip_path.with_suffix(".tmp.mp4")
+
+        try:
+            proc = subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-ss",
+                    f"{start:.6f}",
+                    "-i",
+                    str(source_path),
+                    "-t",
+                    f"{duration:.6f}",
+                    "-an",
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-crf",
+                    "23",
+                    "-movflags",
+                    "+faststart",
+                    str(temp_path),
+                ],
+                capture_output=True,
+                timeout=60,
+            )
+            if proc.returncode != 0:
+                stderr = proc.stderr.decode(errors="ignore").strip()
+                logger.warning("ffmpeg LeRobot video clipping failed: %s", stderr[-500:])
+                return False
+            temp_path.replace(clip_path)
+            return True
+        except Exception as exc:
+            logger.warning("LeRobot video clipping failed: %s", exc)
+            return False
+        finally:
+            if temp_path.exists():
+                temp_path.unlink(missing_ok=True)
