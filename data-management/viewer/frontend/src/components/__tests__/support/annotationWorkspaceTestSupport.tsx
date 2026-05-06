@@ -150,7 +150,7 @@ vi.mock('@/components/episode-viewer', () => ({
     }
 
     return (
-      <div>
+      <div data-testid="trajectory-plot" className={String(props.className ?? '')}>
         <div>Trajectory Plot</div>
         <div>
           {plotProps.selectedRange

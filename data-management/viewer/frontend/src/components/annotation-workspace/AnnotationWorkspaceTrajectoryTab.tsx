@@ -65,7 +65,7 @@ export function AnnotationWorkspaceTrajectoryTab({
                   </div>
                 )}
                 <TrajectoryPlot
-                  className="h-[180px]"
+                  className="h-[320px]"
                   selectedRange={selectedRange}
                   onSelectedRangeChange={onDraftRangeChange}
                   onCreateSubtaskFromRange={onCreateSubtaskFromRange}

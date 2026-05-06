@@ -60,6 +60,9 @@ class LeRobotEpisodeData:
     actions: NDArray[np.float64]
     """Action array of shape (N, action_dim)."""
 
+    additional_features: dict[str, NDArray[np.float64]]
+    """Additional numeric or boolean per-frame features by dataset feature name."""
+
     task_index: int
     """Task index for this episode."""
 
@@ -197,6 +200,54 @@ class LeRobotLoader:
         if isinstance(values[0], list):
             return np.array(values, dtype=np.float64)
         return np.array(values)
+
+    @staticmethod
+    def _is_additional_numeric_feature(feature_name: str, feature_info: dict[str, Any]) -> bool:
+        if feature_name in {
+            "timestamp",
+            "frame_index",
+            "episode_index",
+            "index",
+            "task_index",
+            "observation.state",
+            "observation.velocity",
+            "action",
+            "qpos",
+            "qvel",
+        }:
+            return False
+        dtype = str(feature_info.get("dtype", "")).lower()
+        if dtype in {"video", "image", "string", "str", "utf8", "bytes"}:
+            return False
+        return any(token in dtype for token in ("float", "int", "bool"))
+
+    @staticmethod
+    def _extract_table_additional_features(table: pa.Table, info: LeRobotDatasetInfo) -> dict[str, NDArray[np.float64]]:
+        features: dict[str, NDArray[np.float64]] = {}
+        for feature_name, feature_info in info.features.items():
+            if feature_name not in table.column_names:
+                continue
+            if not LeRobotLoader._is_additional_numeric_feature(feature_name, feature_info):
+                continue
+            features[feature_name] = np.asarray(_column_to_numpy(table, feature_name), dtype=np.float64)
+        return features
+
+    @staticmethod
+    def _extract_jsonl_additional_features(
+        rows: list[dict[str, Any]],
+        info: LeRobotDatasetInfo,
+    ) -> dict[str, NDArray[np.float64]]:
+        features: dict[str, NDArray[np.float64]] = {}
+        for feature_name, feature_info in info.features.items():
+            if not rows or feature_name not in rows[0]:
+                continue
+            if not LeRobotLoader._is_additional_numeric_feature(feature_name, feature_info):
+                continue
+            features[feature_name] = np.asarray(
+                LeRobotLoader._jsonl_column_to_numpy(rows, feature_name),
+                dtype=np.float64,
+            )
+        return features
 
     @staticmethod
     def _get_video_template(info: LeRobotDatasetInfo, camera_key: str) -> str:
@@ -480,6 +531,8 @@ class LeRobotLoader:
                 _column_to_numpy(table, "action") if "action" in col_names else np.zeros_like(joint_positions)
             )
 
+            additional_features = self._extract_table_additional_features(table, info)
+
             # Get task index
             task_index = int(table.column("task_index")[0].as_py()) if "task_index" in col_names else 0
 
@@ -507,6 +560,7 @@ class LeRobotLoader:
                 joint_positions=joint_positions.astype(np.float64),
                 joint_velocities=joint_velocities,
                 actions=actions.astype(np.float64),
+                additional_features=additional_features,
                 task_index=task_index,
                 video_paths=video_paths,
                 metadata={
@@ -563,6 +617,7 @@ class LeRobotLoader:
             joint_velocities = self._jsonl_column_to_numpy(rows, "qvel").astype(np.float64)
 
         actions = self._jsonl_column_to_numpy(rows, "action") if "action" in rows[0] else np.zeros_like(joint_positions)
+        additional_features = self._extract_jsonl_additional_features(rows, info)
 
         task_index = int(rows[0].get("task_index", 0))
         video_paths: dict[str, Path] = {}
@@ -587,6 +642,7 @@ class LeRobotLoader:
             joint_positions=joint_positions.astype(np.float64),
             joint_velocities=joint_velocities,
             actions=actions.astype(np.float64),
+            additional_features=additional_features,
             task_index=task_index,
             video_paths=video_paths,
             metadata={

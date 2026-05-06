@@ -12,9 +12,13 @@ import logging
 import shutil
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ...models.datasources import DatasetInfo, EpisodeData, EpisodeMeta, FeatureSchema, TaskInfo, TrajectoryPoint
-from .base import build_trajectory
+from .base import build_trajectory, build_trajectory_variables
+
+if TYPE_CHECKING:
+    from ..lerobot_loader import LeRobotLoader as LeRobotLoaderType
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +31,7 @@ except ImportError:
     LEROBOT_AVAILABLE = False
     LeRobotLoader = None
 
-    def is_lerobot_dataset(x):
+    def is_lerobot_dataset(path: str | Path) -> bool:
         return False
 
 
@@ -35,7 +39,7 @@ class LeRobotFormatHandler:
     """Handler for LeRobot parquet-format datasets."""
 
     def __init__(self) -> None:
-        self._loaders: dict[str, LeRobotLoader] = {}
+        self._loaders: dict[str, LeRobotLoaderType] = {}
 
     @property
     def available(self) -> bool:
@@ -46,7 +50,7 @@ class LeRobotFormatHandler:
 
     def get_loader(self, dataset_id: str, dataset_path: Path) -> bool:
         """Get or create a LeRobot loader. Returns True if successful."""
-        if not LEROBOT_AVAILABLE:
+        if not LEROBOT_AVAILABLE or LeRobotLoader is None:
             return False
 
         if dataset_id in self._loaders:
@@ -66,7 +70,7 @@ class LeRobotFormatHandler:
             )
             return False
 
-    def _get_loader(self, dataset_id: str) -> LeRobotLoader | None:
+    def _get_loader(self, dataset_id: str) -> LeRobotLoaderType | None:
         return self._loaders.get(dataset_id)
 
     def has_loader(self, dataset_id: str) -> bool:
@@ -74,7 +78,7 @@ class LeRobotFormatHandler:
 
     def list_episodes_from_path(self, path: Path) -> tuple[list[int], dict[int, dict]]:
         """List episodes from a path without registering a persistent loader."""
-        if not LEROBOT_AVAILABLE:
+        if not LEROBOT_AVAILABLE or LeRobotLoader is None:
             return [], {}
         try:
             loader = LeRobotLoader(path)
@@ -104,6 +108,7 @@ class LeRobotFormatHandler:
                 features[name] = FeatureSchema(
                     dtype=feat.get("dtype", "unknown"),
                     shape=feat.get("shape", []),
+                    names=feat.get("names"),
                 )
 
             return DatasetInfo(
@@ -150,6 +155,20 @@ class LeRobotFormatHandler:
 
         try:
             lr_data = loader.load_episode(episode_idx)
+            lr_info = loader.get_dataset_info()
+            trajectory_variables, variable_values = build_trajectory_variables(
+                length=lr_data.length,
+                feature_values={
+                    "observation.state": lr_data.joint_positions,
+                    "action": lr_data.actions,
+                    **lr_data.additional_features,
+                },
+                feature_schemas=lr_info.features,
+                feature_kinds={
+                    "observation.state": "state",
+                    "action": "action",
+                },
+            )
 
             trajectory_data = build_trajectory(
                 length=lr_data.length,
@@ -158,6 +177,8 @@ class LeRobotFormatHandler:
                 joint_positions=lr_data.joint_positions,
                 joint_velocities=lr_data.joint_velocities,
                 end_effector_poses=lr_data.actions[:, :6] if lr_data.actions is not None else None,
+                trajectory_variables=trajectory_variables,
+                variable_values=variable_values,
             )
 
             video_urls: dict[str, str] = {}
@@ -179,6 +200,7 @@ class LeRobotFormatHandler:
                 ),
                 video_urls=video_urls,
                 cameras=list(video_urls.keys()),
+                trajectory_variables=trajectory_variables,
                 trajectory_data=trajectory_data,
             )
         except Exception as e:
@@ -196,6 +218,20 @@ class LeRobotFormatHandler:
 
         try:
             lr_data = loader.load_episode(episode_idx)
+            lr_info = loader.get_dataset_info()
+            trajectory_variables, variable_values = build_trajectory_variables(
+                length=lr_data.length,
+                feature_values={
+                    "observation.state": lr_data.joint_positions,
+                    "action": lr_data.actions,
+                    **lr_data.additional_features,
+                },
+                feature_schemas=lr_info.features,
+                feature_kinds={
+                    "observation.state": "state",
+                    "action": "action",
+                },
+            )
 
             return build_trajectory(
                 length=lr_data.length,
@@ -204,6 +240,8 @@ class LeRobotFormatHandler:
                 joint_positions=lr_data.joint_positions,
                 joint_velocities=lr_data.joint_velocities,
                 end_effector_poses=lr_data.actions[:, :6] if lr_data.actions is not None else None,
+                trajectory_variables=trajectory_variables,
+                variable_values=variable_values,
             )
         except Exception as e:
             logger.warning(
