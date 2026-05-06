@@ -70,7 +70,6 @@ export {
   useRemoveLabelOption,
   useSaveEpisodeLabels,
 } from './use-labels'
-export { detectionKeys, useObjectDetection } from './use-object-detection'
 export {
   type OfflineAnnotation,
   useOfflineAnnotations,

@@ -113,6 +113,7 @@ vi.mock('@/components/annotation-panel', () => ({
     </div>
   ),
   LanguageInstructionWidget: () => <div>Language Instructions</div>,
+  ObjectDetectionWidget: () => <div>Object Detection Widget</div>,
 }))
 
 vi.mock('@/components/vlm-judge', () => ({
@@ -194,7 +195,7 @@ vi.mock('@/components/frame-editor', () => ({
 }))
 
 vi.mock('@/components/object-detection', () => ({
-  DetectionPanel: () => <div>Detection Panel</div>,
+  DetectionViewer: () => <div>Detection Viewer</div>,
 }))
 
 vi.mock('@/components/playback/PlaybackControlStrip', () => ({

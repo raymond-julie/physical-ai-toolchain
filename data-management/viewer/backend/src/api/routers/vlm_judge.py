@@ -26,6 +26,7 @@ from ..config import AppConfig, get_app_config
 from ..csrf import require_csrf_token
 from ..services.dataset_service import DatasetService, get_dataset_service
 from ..services.vlm_judge_service import get_vlm_judge_service
+from ..storage.paths import dataset_id_to_blob_prefix
 from ..validation import (
     SAFE_DATASET_ID_PATTERN,
     SanitizedModel,
@@ -217,7 +218,9 @@ def _resolve_episode(
             status_code=503,
             detail="VLM judge requires a local dataset path (base_path)",
         )
-    dataset_root = Path(base_path) / dataset_id
+    # Dataset IDs use '--' as a separator that maps to nested directories on disk
+    # (e.g. "hybrid-hack--session_xyz" -> "hybrid-hack/session_xyz").
+    dataset_root = Path(base_path) / dataset_id_to_blob_prefix(dataset_id)
     if not dataset_root.exists():
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found")
 

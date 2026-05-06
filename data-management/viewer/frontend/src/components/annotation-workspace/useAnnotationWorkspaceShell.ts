@@ -152,15 +152,8 @@ export function useAnnotationWorkspaceShell({
         previousTab: activeTab,
         nextTab,
       })
-
-      if (nextTab === 'detection') {
-        recordDiagnosticEvent('detection', 'tab-viewed', {
-          previousTab: activeTab,
-          episodeIndex: currentEpisode?.meta.index ?? null,
-        })
-      }
     },
-    [activeTab, currentEpisode?.meta.index],
+    [activeTab],
   )
 
   const playback = useAnnotationWorkspacePlayback({
