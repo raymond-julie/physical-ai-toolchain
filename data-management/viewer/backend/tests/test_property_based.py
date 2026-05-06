@@ -40,6 +40,11 @@ from src.api.validation import (
 
 _valid_dataset_ids = st.from_regex(re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,50}"), fullmatch=True)
 
+_valid_nested_dataset_id_parts = st.from_regex(
+    re.compile(r"[a-zA-Z0-9](?:[a-zA-Z0-9._-]{0,19}[a-zA-Z0-9._])?"),
+    fullmatch=True,
+)
+
 _valid_camera_names = st.from_regex(re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,30}"), fullmatch=True)
 
 _nested_json = st.recursive(
@@ -177,9 +182,7 @@ class TestValidateSafeStringProperties:
 class TestValidateDatasetIdProperties:
     @given(
         parts=st.lists(
-            st.from_regex(re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,20}"), fullmatch=True).filter(
-                lambda part: "--" not in part and not part.endswith("-")
-            ),
+            _valid_nested_dataset_id_parts,
             min_size=1,
             max_size=5,
         )
@@ -191,9 +194,7 @@ class TestValidateDatasetIdProperties:
 
     @given(
         parts=st.lists(
-            st.from_regex(re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,10}"), fullmatch=True).filter(
-                lambda part: "--" not in part and not part.endswith("-")
-            ),
+            _valid_nested_dataset_id_parts,
             min_size=6,
             max_size=10,
         )
@@ -540,7 +541,7 @@ class TestInterpolateFrameDataProperties:
     def test_output_shape_matches_row(self, n: int, cols: int, t: float) -> None:
         data = np.random.default_rng(42).standard_normal((n, cols))
         idx = np.random.default_rng(0).integers(0, n - 1)
-        result = interpolate_frame_data(data, idx, t)
+        result = interpolate_frame_data(data, int(idx), t)
         assert result.shape == (cols,)
 
     @given(

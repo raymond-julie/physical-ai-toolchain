@@ -5,17 +5,23 @@ interface TrajectoryPointLike {
   timestamp: number
   jointPositions: number[]
   jointVelocities: number[]
-  action?: number[]
-  gripperState?: number
-  signals?: Record<string, number | boolean | null | undefined>
+  variables?: Record<string, number | null | undefined>
+}
+
+export interface TrajectoryVariableLike {
+  key: string
+  label: string
+  source: string
+  index?: number | null
+  kind?: string
 }
 
 interface BuildTrajectoryChartDataOptions {
   trajectoryData: readonly TrajectoryPointLike[]
   trajectoryAdjustments: ReadonlyMap<number, TrajectoryAdjustment>
+  trajectoryVariables?: readonly TrajectoryVariableLike[]
   showVelocity: boolean
   showNormalized: boolean
-  showAction?: boolean
 }
 
 export function applyTrajectoryAdjustment(
@@ -56,42 +62,53 @@ export function normalizeSeries(value: number, min: number, max: number) {
   return (value - min) / (max - min)
 }
 
-export function signalDataKey(name: string) {
-  return `signal_${name.replace(/[^a-zA-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`
+function normalizeSeriesValues(seriesValues: number[][]) {
+  return (
+    seriesValues[0]?.map((_, seriesIndex) => {
+      const values = seriesValues.map((pointValues) => pointValues[seriesIndex])
+
+      return {
+        min: Math.min(...values),
+        max: Math.max(...values),
+      }
+    }) ?? []
+  )
+}
+
+function buildNamedVariableValues(
+  trajectoryData: readonly TrajectoryPointLike[],
+  trajectoryVariables: readonly TrajectoryVariableLike[],
+) {
+  return trajectoryData.map((point) =>
+    trajectoryVariables.map((variable) => {
+      const value = point.variables?.[variable.key]
+      return typeof value === 'number' && Number.isFinite(value) ? value : 0
+    }),
+  )
 }
 
 export function buildTrajectoryChartData({
   trajectoryData,
   trajectoryAdjustments,
+  trajectoryVariables = [],
   showVelocity,
   showNormalized,
-  showAction = false,
 }: BuildTrajectoryChartDataOptions) {
-  const seriesValues = trajectoryData.map((point) => {
-    const adjustment = trajectoryAdjustments.get(point.frame)
+  const shouldUseNamedVariables = !showVelocity && trajectoryVariables.length > 0
+  const seriesValues = shouldUseNamedVariables
+    ? buildNamedVariableValues(trajectoryData, trajectoryVariables)
+    : trajectoryData.map((point) => {
+      const adjustment = trajectoryAdjustments.get(point.frame)
 
-    if (showAction) {
-      return point.action ?? []
-    }
-
-    return showVelocity
-      ? point.jointVelocities
-      : point.jointPositions.map((position, jointIndex) =>
+      return showVelocity
+        ? point.jointVelocities
+        : point.jointPositions.map((position, jointIndex) =>
           applyTrajectoryAdjustment(position, jointIndex, adjustment),
         )
-  })
+    })
 
-  const shouldNormalizePositions = showNormalized && !showVelocity && !showAction
-  const normalizedRanges = shouldNormalizePositions
-    ? (seriesValues[0]?.map((_, jointIndex) => {
-        const values = seriesValues.map((pointValues) => pointValues[jointIndex])
-
-        return {
-          min: Math.min(...values),
-          max: Math.max(...values),
-        }
-      }) ?? [])
-    : []
+  const shouldNormalizePositions = showNormalized && !showVelocity
+  const normalizedRanges = shouldNormalizePositions ? normalizeSeriesValues(seriesValues) : []
 
   return trajectoryData.map((point, pointIndex) => {
     const adjustment = trajectoryAdjustments.get(point.frame)
@@ -101,14 +118,13 @@ export function buildTrajectoryChartData({
       hasAdjustment: !!adjustment,
     }
     const pointValues =
-      seriesValues[pointIndex] ??
-      (showAction ? (point.action ?? []) : showVelocity ? point.jointVelocities : point.jointPositions)
+      seriesValues[pointIndex] ?? (showVelocity ? point.jointVelocities : point.jointPositions)
 
-    pointValues.forEach((value, jointIndex) => {
-      const dataKey = showAction ? `action_${jointIndex}` : `joint_${jointIndex}`
+    pointValues.forEach((value, seriesIndex) => {
+      const dataKey = shouldUseNamedVariables ? `series_${seriesIndex}` : `joint_${seriesIndex}`
 
       if (shouldNormalizePositions) {
-        const range = normalizedRanges[jointIndex]
+        const range = normalizedRanges[seriesIndex]
 
         data[dataKey] = range ? normalizeSeries(value, range.min, range.max) : value
         return
@@ -116,17 +132,6 @@ export function buildTrajectoryChartData({
 
       data[dataKey] = value
     })
-
-    if (point.gripperState !== undefined) {
-      data.gripper_state = point.gripperState
-    }
-
-    for (const [name, value] of Object.entries(point.signals ?? {})) {
-      if (value === undefined || value === null) {
-        continue
-      }
-      data[signalDataKey(name)] = typeof value === 'boolean' ? (value ? 1 : 0) : value
-    }
 
     return data
   })

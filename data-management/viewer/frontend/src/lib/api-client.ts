@@ -104,6 +104,29 @@ function preserveDatasetFeatureKeys(raw: Record<string, unknown>): DatasetInfo {
 }
 
 /**
+ * Apply transformKeys to an episode payload while preserving the original
+ * trajectory variable map keys (e.g. ``observation.gripper.is_closed``) which
+ * must not be camelCased so frontend lookups via ``trajectoryVariables[i].key``
+ * remain valid.
+ */
+function preserveEpisodeVariableKeys(raw: Record<string, unknown>): EpisodeData {
+  const rawTrajectory = raw.trajectory_data as Array<Record<string, unknown>> | undefined
+  const episode = transformKeys<EpisodeData>(raw)
+  if (rawTrajectory && Array.isArray(episode.trajectoryData)) {
+    episode.trajectoryData = episode.trajectoryData.map((frame, frameIndex) => {
+      const originalVariables = rawTrajectory[frameIndex]?.variables as
+        | Record<string, unknown>
+        | undefined
+      if (!originalVariables) {
+        return frame
+      }
+      return { ...frame, variables: { ...(originalVariables as Record<string, number>) } }
+    })
+  }
+  return episode
+}
+
+/**
  * Custom error class for API errors.
  */
 export class ApiClientError extends Error {
@@ -220,8 +243,8 @@ export async function fetchEpisode(datasetId: string, episodeIndex: number): Pro
   const response = await fetch(`${API_BASE}/datasets/${datasetId}/episodes/${episodeIndex}`, {
     headers: await requestHeaders(),
   })
-  const data = await handleResponse<unknown>(response)
-  return transformKeys<EpisodeData>(data)
+  const data = await handleResponse<Record<string, unknown>>(response)
+  return preserveEpisodeVariableKeys(data)
 }
 
 // ============================================================================

@@ -88,20 +88,20 @@ export const TrajectoryPlot = memo(function TrajectoryPlot({
         jointCount={state.jointCount}
         selectedJoints={state.selectedJoints}
         onSelectJoints={state.setSelectedJoints}
-        groups={state.selectorGroups}
-        labels={state.selectorLabels}
+        groups={state.variableGroups}
+        labels={state.variableLabels}
         onEditJointLabel={state.withSave(state.updateLabel)}
         onEditGroupLabel={state.withSave(state.updateGroupLabel)}
         onCreateGroup={state.withSave(state.createGroup)}
         onDeleteGroup={state.withSave(state.deleteGroup)}
         onMoveJoint={state.withSave(state.moveJoint)}
         onOpenDefaults={() => state.setDefaultsOpen(true)}
-        mode={state.mode}
-        onSetMode={state.setMode}
+        editable={state.variablesEditable}
+        showVelocity={state.showVelocity}
+        onSetShowVelocity={state.setShowVelocity}
         showNormalized={state.showNormalized}
         isNormalizationDisabled={state.isNormalizationDisabled}
         onToggleNormalization={state.toggleNormalization}
-        selectorEditable={state.selectorEditable}
       />
 
       <TrajectoryPlotChart
@@ -109,9 +109,9 @@ export const TrajectoryPlot = memo(function TrajectoryPlot({
         currentFrame={state.currentFrame}
         selectedJoints={state.selectedJoints}
         resolveLabel={state.resolveLabel}
+        resolveDataKey={state.resolveDataKey}
         trajectoryAdjustments={state.trajectoryAdjustments}
         showVelocity={state.showVelocity}
-        showAction={state.showAction}
         showNormalized={state.showNormalized}
         selectedRange={selectedRange}
         selectionHighlight={state.selectionHighlight}

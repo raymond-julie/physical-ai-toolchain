@@ -15,13 +15,11 @@ import {
 } from '@/lib/trajectory-graph-geometry'
 import { useEpisodeStore, useTrajectoryAdjustmentState } from '@/stores'
 import { useJointConfigStore } from '@/stores/joint-config-store'
+import type { TrajectoryVariable } from '@/types'
 
-import { getJointLabel } from './joint-constants'
+import { getJointLabel, type JointGroup } from './joint-constants'
 import { buildTrajectoryChartData } from './trajectory-plot-utils'
-import type { TrajectoryPlotMode } from './TrajectoryPlotControls'
 import { useTrajectoryPlotSelection } from './useTrajectoryPlotSelection'
-
-const ACTION_GROUPS = [{ id: 'actions', label: 'Action', indices: [] }]
 
 interface UseTrajectoryPlotStateOptions {
   onSaved?: () => void
@@ -31,6 +29,62 @@ interface UseTrajectoryPlotStateOptions {
   onSelectionStart?: () => void
   onSelectionComplete?: (range: [number, number]) => void
   onSeekFrame?: (frame: number) => void
+}
+
+function humanizeSource(source: string) {
+  return source
+    .replace(/^observation\./, '')
+    .replace(/[._-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function removeVariableLabelPrefix(label: string) {
+  return label.replace(/^(State|Action):\s+/i, '')
+}
+
+function buildVariableGroups(variables: readonly TrajectoryVariable[]): JointGroup[] {
+  const groups = new Map<string, JointGroup>()
+
+  variables.forEach((variable, index) => {
+    const id = `${variable.kind}:${variable.source}`
+    const existing = groups.get(id)
+    if (existing) {
+      existing.indices.push(index)
+      return
+    }
+
+    groups.set(id, {
+      id,
+      label: humanizeSource(variable.source),
+      indices: [index],
+    })
+  })
+
+  return Array.from(groups.values())
+}
+
+function resolveNamedVariableSelection(
+  chartData: Array<Record<string, number | boolean>>,
+  variableCount: number,
+) {
+  if (variableCount <= 16) {
+    return Array.from({ length: variableCount }, (_, index) => index)
+  }
+
+  return Array.from({ length: variableCount }, (_, index) => {
+    const values = chartData
+      .map((point) => point[`series_${index}`])
+      .filter((value): value is number => typeof value === 'number')
+
+    return {
+      index,
+      range: values.length ? Math.max(...values) - Math.min(...values) : 0,
+    }
+  })
+    .sort((left, right) => right.range - left.range)
+    .slice(0, 12)
+    .map((item) => item.index)
+    .sort((left, right) => left - right)
 }
 
 export function useTrajectoryPlotState({
@@ -57,11 +111,17 @@ export function useTrajectoryPlotState({
   const saveDefaults = useSaveJointConfigDefaults()
 
   const [selectedJoints, setSelectedJoints] = useState<number[]>([])
-  const [mode, setMode] = useState<TrajectoryPlotMode>('position')
+  const [showVelocity, setShowVelocity] = useState(false)
   const [showNormalized, setShowNormalized] = useState(true)
   const [defaultsOpen, setDefaultsOpen] = useState(false)
   const [plotArea, setPlotArea] = useState<TrajectoryPlotArea | null>(null)
   const selectionSurfaceRef = useRef<HTMLDivElement>(null)
+  const namedTrajectoryVariables = currentEpisode?.trajectoryVariables ?? []
+  const shouldUseNamedVariables = !showVelocity && namedTrajectoryVariables.length > 0
+  const stateVariables = useMemo(
+    () => namedTrajectoryVariables.filter((variable) => variable.kind === 'state'),
+    [namedTrajectoryVariables],
+  )
 
   const withSave = useCallback(
     <T extends unknown[]>(fn: (...args: T) => void) =>
@@ -73,9 +133,49 @@ export function useTrajectoryPlotState({
   )
 
   const resolveLabel = useCallback(
-    (idx: number) => (mode === 'action' ? `Action ${idx}` : jointConfig.labels[String(idx)] ?? getJointLabel(idx)),
-    [jointConfig.labels, mode],
+    (idx: number) => {
+      if (shouldUseNamedVariables) {
+        return removeVariableLabelPrefix(namedTrajectoryVariables[idx]?.label ?? getJointLabel(idx))
+      }
+      if (showVelocity && stateVariables[idx]) {
+        return removeVariableLabelPrefix(stateVariables[idx].label)
+      }
+      return jointConfig.labels[String(idx)] ?? getJointLabel(idx)
+    },
+    [jointConfig.labels, namedTrajectoryVariables, shouldUseNamedVariables, showVelocity, stateVariables],
   )
+
+  const resolveDataKey = useCallback(
+    (idx: number) => (shouldUseNamedVariables ? `series_${idx}` : `joint_${idx}`),
+    [shouldUseNamedVariables],
+  )
+
+  const variableLabels = useMemo(() => {
+    if (shouldUseNamedVariables) {
+      return Object.fromEntries(
+        Array.from({ length: namedTrajectoryVariables.length }, (_, index) => [
+          String(index),
+          resolveLabel(index),
+        ]),
+      )
+    }
+    if (showVelocity && stateVariables.length > 0) {
+      return Object.fromEntries(
+        stateVariables.map((variable, index) => [String(index), removeVariableLabelPrefix(variable.label)]),
+      )
+    }
+    return {}
+  }, [namedTrajectoryVariables.length, resolveLabel, shouldUseNamedVariables, showVelocity, stateVariables])
+
+  const variableGroups = useMemo(() => {
+    if (shouldUseNamedVariables) {
+      return buildVariableGroups(namedTrajectoryVariables)
+    }
+    if (showVelocity && stateVariables.length > 0) {
+      return buildVariableGroups(stateVariables)
+    }
+    return jointConfig.groups
+  }, [jointConfig.groups, namedTrajectoryVariables, shouldUseNamedVariables, showVelocity, stateVariables])
 
   const chartData = useMemo(() => {
     if (!currentEpisode?.trajectoryData) {
@@ -85,58 +185,55 @@ export function useTrajectoryPlotState({
     return buildTrajectoryChartData({
       trajectoryData: currentEpisode.trajectoryData,
       trajectoryAdjustments,
-      showVelocity: mode === 'velocity',
+      trajectoryVariables: currentEpisode.trajectoryVariables,
+      showVelocity,
       showNormalized,
-      showAction: mode === 'action',
     })
-  }, [currentEpisode?.trajectoryData, mode, showNormalized, trajectoryAdjustments])
+  }, [currentEpisode?.trajectoryData, showNormalized, showVelocity, trajectoryAdjustments])
 
   const jointCount = useMemo(() => {
     if (!currentEpisode?.trajectoryData?.[0]) {
       return 0
     }
-    return currentEpisode.trajectoryData[0].jointPositions.length
-  }, [currentEpisode?.trajectoryData])
-
-  const actionCount = useMemo(() => {
-    if (!currentEpisode?.trajectoryData?.[0]?.action) {
-      return 0
+    if (shouldUseNamedVariables) {
+      return namedTrajectoryVariables.length
     }
-    return currentEpisode.trajectoryData[0].action.length
-  }, [currentEpisode?.trajectoryData])
-
-  const signalCount = mode === 'action' ? actionCount : jointCount
-  const selectorLabels = useMemo(() => {
-    if (mode !== 'action') {
-      return jointConfig.labels
-    }
-
-    return Object.fromEntries(Array.from({ length: actionCount }, (_, index) => [String(index), `Action ${index}`]))
-  }, [actionCount, jointConfig.labels, mode])
-
-  const selectorGroups = useMemo(() => {
-    if (mode !== 'action') {
-      return jointConfig.groups
-    }
-
-    return [{ ...ACTION_GROUPS[0], indices: Array.from({ length: actionCount }, (_, index) => index) }]
-  }, [actionCount, jointConfig.groups, mode])
+    return showVelocity
+      ? currentEpisode.trajectoryData[0].jointVelocities.length
+      : currentEpisode.trajectoryData[0].jointPositions.length
+  }, [currentEpisode?.trajectoryData, namedTrajectoryVariables.length, shouldUseNamedVariables, showVelocity])
 
   const autoSelectedJoints = useMemo(
-    () =>
-      getAutoSelectedJointsForEpisode(
+    () => {
+      if (shouldUseNamedVariables) {
+        return resolveNamedVariableSelection(chartData, jointCount)
+      }
+
+      const groups =
+        showVelocity && stateVariables.length > 0
+          ? buildVariableGroups(stateVariables)
+          : jointConfig.groups
+
+      return getAutoSelectedJointsForEpisode(
         currentEpisode?.trajectoryData ?? [],
-        jointConfig.groups,
+        groups,
         jointCount,
-      ),
-    [currentEpisode?.trajectoryData, jointConfig.groups, jointCount],
+      )
+    },
+    [
+      chartData,
+      currentEpisode?.trajectoryData,
+      jointConfig.groups,
+      jointCount,
+      shouldUseNamedVariables,
+      showVelocity,
+      stateVariables,
+    ],
   )
 
   useEffect(() => {
-    setSelectedJoints(
-      mode === 'action' ? Array.from({ length: actionCount }, (_, index) => index) : autoSelectedJoints,
-    )
-  }, [actionCount, autoSelectedJoints, mode])
+    setSelectedJoints(autoSelectedJoints)
+  }, [autoSelectedJoints])
 
   useEffect(() => {
     const surface = selectionSurfaceRef.current
@@ -171,7 +268,7 @@ export function useTrajectoryPlotState({
     currentEpisode?.meta.length,
     selectedJoints.length,
     showNormalized,
-    mode,
+    showVelocity,
   ])
 
   const frameFromClientX = useCallback(
@@ -239,16 +336,12 @@ export function useTrajectoryPlotState({
   )
 
   const toggleNormalization = useCallback(() => {
-    if (mode !== 'position') {
+    if (showVelocity) {
       return
     }
 
     setShowNormalized((current) => !current)
-  }, [mode])
-
-  const setShowVelocity = useCallback((value: boolean) => {
-    setMode(value ? 'velocity' : 'position')
-  }, [])
+  }, [showVelocity])
 
   return {
     chartData,
@@ -260,32 +353,33 @@ export function useTrajectoryPlotState({
     deleteGroup,
     handleChartClick,
     jointConfig,
-    jointCount: signalCount,
+    jointCount,
     moveJoint,
     onCreateSubtaskFromRange,
     plotArea,
     resolveLabel,
+    resolveDataKey,
     saveDefaults,
     selectedJoints,
     selection,
     selectionHighlight,
     selectionSurfaceRef,
-    selectorEditable: mode !== 'action',
-    selectorGroups,
-    selectorLabels,
     setDefaultsOpen,
-    setMode,
     setSelectedJoints,
     setShowVelocity,
     showNormalized,
-    showVelocity: mode === 'velocity',
-    showAction: mode === 'action',
-    mode,
+    showVelocity,
     toggleNormalization,
     trajectoryAdjustments,
     updateGroupLabel,
     updateLabel,
+    variableGroups,
+    variableLabels:
+      shouldUseNamedVariables || (showVelocity && stateVariables.length > 0)
+        ? variableLabels
+        : jointConfig.labels,
+    variablesEditable: !shouldUseNamedVariables && !(showVelocity && stateVariables.length > 0),
     withSave,
-    isNormalizationDisabled: mode !== 'position',
+    isNormalizationDisabled: showVelocity,
   }
 }

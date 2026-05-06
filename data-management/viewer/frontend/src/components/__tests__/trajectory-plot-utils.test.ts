@@ -5,7 +5,6 @@ import {
   buildTrajectoryChartData,
   normalizeSeries,
   resolveTrajectorySelectionRange,
-  signalDataKey,
 } from '@/components/episode-viewer/trajectory-plot-utils'
 
 describe('trajectory-plot-utils', () => {
@@ -52,42 +51,48 @@ describe('trajectory-plot-utils', () => {
     expect(chartData[0]).toMatchObject({ joint_0: 0.1, joint_1: 0.2 })
   })
 
-  it('adds action and auxiliary signals to chart data', () => {
+  it('builds normalized chart series from named trajectory variables', () => {
     const chartData = buildTrajectoryChartData({
       trajectoryData: [
         {
           frame: 0,
           timestamp: 0,
-          jointPositions: [0, 2],
-          jointVelocities: [0.1, 0.2],
-          action: [0.4, 0.8],
-          gripperState: 0.25,
-          signals: { 'observation.gripper.is_closed': false, 'observation.force': 1.5 },
+          jointPositions: [0],
+          jointVelocities: [0],
+          variables: {
+            'observation.state[0]': 0,
+            'action[0]': 2,
+            'observation.gripper.is_closed': 0,
+          },
         },
         {
           frame: 1,
           timestamp: 0.1,
-          jointPositions: [1, 4],
-          jointVelocities: [0.2, 0.4],
-          action: [0.6, 1.2],
-          gripperState: 0.75,
-          signals: { 'observation.gripper.is_closed': true, 'observation.force': 2.5 },
+          jointPositions: [1],
+          jointVelocities: [0.1],
+          variables: {
+            'observation.state[0]': 1,
+            'action[0]': 4,
+            'observation.gripper.is_closed': 1,
+          },
         },
       ],
       trajectoryAdjustments: new Map(),
+      trajectoryVariables: [
+        { key: 'observation.state[0]', label: 'shoulder_pan_joint', source: 'observation.state' },
+        { key: 'action[0]', label: 'target_shoulder_pan_joint', source: 'action' },
+        {
+          key: 'observation.gripper.is_closed',
+          label: 'is_closed',
+          source: 'observation.gripper.is_closed',
+        },
+      ],
       showVelocity: false,
-      showNormalized: false,
-      showAction: true,
+      showNormalized: true,
     })
 
-    const closedKey = signalDataKey('observation.gripper.is_closed')
-    const forceKey = signalDataKey('observation.force')
-    expect(chartData[0]).toMatchObject({ action_0: 0.4, action_1: 0.8, gripper_state: 0.25 })
-    expect(chartData[0]?.[closedKey]).toBe(0)
-    expect(chartData[0]?.[forceKey]).toBe(1.5)
-    expect(chartData[1]).toMatchObject({ action_0: 0.6, action_1: 1.2, gripper_state: 0.75 })
-    expect(chartData[1]?.[closedKey]).toBe(1)
-    expect(chartData[1]?.[forceKey]).toBe(2.5)
+    expect(chartData[0]).toMatchObject({ series_0: 0, series_1: 0, series_2: 0 })
+    expect(chartData[1]).toMatchObject({ series_0: 1, series_1: 1, series_2: 1 })
   })
 
   it('normalizes values and resolves drag selection ranges predictably', () => {
