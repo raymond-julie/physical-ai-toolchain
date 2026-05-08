@@ -115,7 +115,10 @@ def bootstrap_mlflow(
         return MLflowConfig(tracking_uri=tracking_uri, experiment_name=resolved_name)
 
     except Exception as exc:
+        import traceback
+
         print(f"[ERROR] Failed to configure Azure ML: {exc}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
 
