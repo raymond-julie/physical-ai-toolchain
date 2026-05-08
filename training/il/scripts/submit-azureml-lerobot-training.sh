@@ -323,111 +323,12 @@ fi
 #------------------------------------------------------------------------------
 # Build Training Command
 #
-# The AzureML job runs a training entry script that:
-# 1. Installs LeRobot dependencies from the workflow manifest
-# 2. Authenticates with HuggingFace Hub (skipped when --from-blob is set)
-# 3. Optionally downloads the dataset from Azure Blob Storage
-# 4. Configures MLflow tracking
-# 5. Runs lerobot-train with appropriate arguments
-# 6. Registers the final checkpoint to Azure ML
+# The AzureML job runs training/il/scripts/lerobot/azureml-train-entry.sh, which
+# is uploaded as part of the code asset. Keeping the inline command short avoids
+# multi-line YAML escaping issues with the Azure ML K8s extension.
 #------------------------------------------------------------------------------
 
-# Build the inline training command
-train_cmd='bash -c '"'"'
-set -euo pipefail
-
-echo "=== LeRobot AzureML Training ==="
-
-# Install runtime dependencies from pre-compiled requirements
-apt-get update -qq && apt-get install -y -qq ffmpeg git build-essential > /dev/null 2>&1
-pip install --quiet uv
-LEROBOT_REQUIREMENTS="training/il/lerobot/requirements.txt"
-if [[ ! -f "${LEROBOT_REQUIREMENTS}" ]]; then
-  echo "ERROR: LeRobot requirements not found at ${LEROBOT_REQUIREMENTS}" >&2
-  exit 1
-fi
-uv pip install --system --requirement "${LEROBOT_REQUIREMENTS}"
-
-# Build lerobot-train args
-train_args=(
-  --dataset.repo_id="${DATASET_REPO_ID}"
-  --policy.type="${POLICY_TYPE}"
-  --output_dir="${OUTPUT_DIR}"
-  --job_name="${JOB_NAME}"
-  --policy.device=cuda
-)
-
-# Resolve data source: Azure Blob Storage or HuggingFace Hub
-if [[ -n "${STORAGE_ACCOUNT:-}" ]]; then
-  echo "Downloading dataset from Azure Blob Storage (${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${BLOB_PREFIX})..."
-  python3 -m training.il.scripts.lerobot.download_dataset
-  FULL_DATASET_PATH="${DATASET_ROOT}/${DATASET_REPO_ID}"
-  echo "Dataset materialized at: ${FULL_DATASET_PATH}"
-  train_args+=(
-    --dataset.root="${FULL_DATASET_PATH}"
-    --dataset.use_imagenet_stats=false
-    --dataset.video_backend=pyav
-  )
-elif [[ -n "${HF_TOKEN:-}" ]]; then
-  python3 -c "from huggingface_hub import login; login(token=\"${HF_TOKEN}\", add_to_git_credential=False)"
-fi
-
-if [[ "${WANDB_ENABLE:-true}" == "true" ]]; then
-  train_args+=(--wandb.enable=true)
-  [[ -n "${WANDB_PROJECT:-}" ]] && train_args+=(--wandb.project="${WANDB_PROJECT}")
-else
-  train_args+=(--wandb.enable=false)
-fi
-
-[[ -n "${POLICY_REPO_ID:-}" ]] && train_args+=(--policy.repo_id="${POLICY_REPO_ID}")
-[[ -n "${TRAINING_STEPS:-}" ]] && train_args+=(--steps="${TRAINING_STEPS}")
-[[ -n "${BATCH_SIZE:-}" ]] && train_args+=(--batch_size="${BATCH_SIZE}")
-[[ -n "${EVAL_FREQ:-}" ]] && train_args+=(--eval_freq="${EVAL_FREQ}")
-[[ -n "${SAVE_FREQ:-}" ]] && train_args+=(--save_freq="${SAVE_FREQ}")
-
-echo "Running: lerobot-train ${train_args[*]}"
-lerobot-train "${train_args[@]}"
-
-echo "=== Training Complete ==="
-
-# Register checkpoint
-if [[ -n "${REGISTER_CHECKPOINT:-}" ]]; then
-  echo "Registering checkpoint to Azure ML..."
-  python3 -c "
-import os, sys
-from pathlib import Path
-from azure.ai.ml import MLClient
-from azure.ai.ml.entities import Model
-from azure.ai.ml.constants import AssetTypes
-from azure.identity import DefaultAzureCredential
-
-output_dir = Path(os.environ[\"OUTPUT_DIR\"])
-checkpoint_dirs = sorted(output_dir.glob(\"checkpoints/*\"), key=lambda p: p.stat().st_mtime, reverse=True)
-if not checkpoint_dirs:
-    pretrained = output_dir / \"pretrained_model\"
-    checkpoint_path = pretrained if pretrained.exists() else None
-else:
-    pretrained = checkpoint_dirs[0] / \"pretrained_model\"
-    checkpoint_path = pretrained if pretrained.exists() else checkpoint_dirs[0]
-
-if not checkpoint_path:
-    print(\"No checkpoints found\"); sys.exit(0)
-
-policy_type = os.environ.get(\"POLICY_TYPE\", \"act\")
-credential = DefaultAzureCredential()
-client = MLClient(credential, os.environ[\"AZURE_SUBSCRIPTION_ID\"], os.environ[\"AZURE_RESOURCE_GROUP\"], os.environ[\"AZUREML_WORKSPACE_NAME\"])
-model = Model(
-    path=str(checkpoint_path),
-    name=os.environ[\"REGISTER_CHECKPOINT\"],
-    description=\"LeRobot %s policy\" % policy_type,
-    type=AssetTypes.CUSTOM_MODEL,
-    tags={\"framework\": \"lerobot\", \"policy_type\": policy_type, \"source\": \"azureml-job\"},
-)
-registered = client.models.create_or_update(model)
-print(f\"Model registered: {registered.name} v{registered.version}\")
-"
-fi
-'"'"''
+train_cmd="bash il/scripts/lerobot/azureml-train-entry.sh"
 
 #------------------------------------------------------------------------------
 # Build Submission Command
@@ -438,7 +339,7 @@ az_args=(
   --resource-group "$resource_group"
   --workspace-name "$workspace_name"
   --file "$job_file"
-  --set "code=$REPO_ROOT"
+  --set "code=$REPO_ROOT/training"
   --set "environment=azureml:${environment_name}:${environment_version}"
 )
 
