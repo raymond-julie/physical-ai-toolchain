@@ -383,13 +383,41 @@ if [[ "$from_blob" == "true" ]]; then
 fi
 
 # Environment variables
+#
+# The Azure ML Kubernetes extension does not substitute `${{inputs.X}}` template
+# refs in `environment_variables` at runtime: it passes the literal string into
+# the container. Set every env var the entry script reads directly via
+# `--set environment_variables.X=Y` so the values are baked into the job spec.
 az_args+=(
   --set "environment_variables.AZURE_SUBSCRIPTION_ID=$subscription_id"
   --set "environment_variables.AZURE_RESOURCE_GROUP=$resource_group"
   --set "environment_variables.AZUREML_WORKSPACE_NAME=$workspace_name"
   --set "environment_variables.MLFLOW_TRACKING_TOKEN_REFRESH_RETRIES=$mlflow_retries"
   --set "environment_variables.MLFLOW_HTTP_REQUEST_TIMEOUT=$mlflow_timeout"
+  --set "environment_variables.DATASET_REPO_ID=$dataset_repo_id"
+  --set "environment_variables.POLICY_TYPE=$policy_type"
+  --set "environment_variables.JOB_NAME=$job_name"
+  --set "environment_variables.OUTPUT_DIR=$output_dir"
+  --set "environment_variables.SAVE_FREQ=$save_freq"
+  --set "environment_variables.WANDB_ENABLE=$wandb_enable"
+  --set "environment_variables.WANDB_PROJECT=$wandb_project"
 )
+
+[[ -n "$policy_repo_id" ]]      && az_args+=(--set "environment_variables.POLICY_REPO_ID=$policy_repo_id")
+[[ -n "$lerobot_version" ]]     && az_args+=(--set "environment_variables.LEROBOT_VERSION=$lerobot_version")
+[[ -n "$training_steps" ]]      && az_args+=(--set "environment_variables.TRAINING_STEPS=$training_steps")
+[[ -n "$batch_size" ]]          && az_args+=(--set "environment_variables.BATCH_SIZE=$batch_size")
+[[ -n "$eval_freq" ]]           && az_args+=(--set "environment_variables.EVAL_FREQ=$eval_freq")
+[[ -n "$register_checkpoint" ]] && az_args+=(--set "environment_variables.REGISTER_CHECKPOINT=$register_checkpoint")
+
+if [[ "$from_blob" == "true" ]]; then
+  az_args+=(
+    --set "environment_variables.STORAGE_ACCOUNT=$storage_account"
+    --set "environment_variables.STORAGE_CONTAINER=$storage_container"
+    --set "environment_variables.BLOB_PREFIX=$blob_prefix"
+    --set "environment_variables.DATASET_ROOT=$dataset_root"
+  )
+fi
 
 [[ ${#forward_args[@]} -gt 0 ]] && az_args+=("${forward_args[@]}")
 az_args+=(--query "name" -o "tsv")
