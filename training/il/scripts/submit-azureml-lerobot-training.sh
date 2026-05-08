@@ -32,7 +32,16 @@ Usage: submit-azureml-lerobot-training.sh [OPTIONS] [-- az-ml-job-flags]
 Submit LeRobot behavioral cloning training to Azure ML.
 
 REQUIRED:
-    -d, --dataset-repo-id ID     HuggingFace dataset repository (e.g., user/dataset)
+    -d, --dataset-repo-id ID     HuggingFace dataset repository or logical name
+                                 (also used as local folder when --from-blob)
+
+DATA SOURCE:
+        --from-blob               Use Azure Blob Storage as data source instead of HuggingFace Hub
+        --storage-account NAME    Azure Storage account name
+        --storage-container NAME  Blob container name (default: datasets)
+        --blob-prefix PREFIX      Blob path prefix for dataset (defaults to dataset-repo-id)
+        --dataset-root DIR        Container path where blob dataset is materialized
+                                  (default: /workspace/data)
 
 AZUREML ASSET OPTIONS:
     --environment-name NAME       AzureML environment name (default: lerobot-training-env)
@@ -106,6 +115,14 @@ EXAMPLES:
       --policy-repo-id user/pretrained-act \
       --training-steps 10000
 
+    # Train from Azure Blob Storage
+    submit-azureml-lerobot-training.sh \
+      -d hve-robo/hve-robo-cell \
+      --from-blob \
+      --storage-account stosmorbt3dev001 \
+      --blob-prefix hve-robo/hve-robo-cell \
+      -r my-act-model
+
     # Register environment only (no job submission)
     submit-azureml-lerobot-training.sh -d placeholder --assets-only
 EOF
@@ -158,6 +175,12 @@ output_dir="${OUTPUT_DIR:-/workspace/outputs/train}"
 policy_repo_id="${POLICY_REPO_ID:-}"
 lerobot_version="${LEROBOT_VERSION:-}"
 
+from_blob=false
+storage_account="${BLOB_STORAGE_ACCOUNT:-${AZURE_STORAGE_ACCOUNT_NAME:-}}"
+storage_container="${BLOB_STORAGE_CONTAINER:-datasets}"
+blob_prefix="${BLOB_PREFIX:-}"
+dataset_root="${DATASET_ROOT:-/workspace/data}"
+
 training_steps="${TRAINING_STEPS:-}"
 batch_size="${BATCH_SIZE:-}"
 eval_freq="${EVAL_FREQ:-}"
@@ -199,6 +222,11 @@ while [[ $# -gt 0 ]]; do
     -o|--output-dir)              output_dir="$2"; shift 2 ;;
     --policy-repo-id)             policy_repo_id="$2"; shift 2 ;;
     --lerobot-version)            lerobot_version="$2"; shift 2 ;;
+    --from-blob)                  from_blob=true; shift ;;
+    --storage-account)            storage_account="$2"; shift 2 ;;
+    --storage-container)          storage_container="$2"; shift 2 ;;
+    --blob-prefix)                blob_prefix="$2"; shift 2 ;;
+    --dataset-root)               dataset_root="$2"; shift 2 ;;
     --training-steps)             training_steps="$2"; shift 2 ;;
     --batch-size)                 batch_size="$2"; shift 2 ;;
     --eval-freq)                  eval_freq="$2"; shift 2 ;;
@@ -235,6 +263,11 @@ ensure_ml_extension
 [[ -n "$resource_group" ]] || fatal "AZURE_RESOURCE_GROUP required"
 [[ -n "$workspace_name" ]] || fatal "AZUREML_WORKSPACE_NAME required"
 
+if [[ "$from_blob" == "true" ]]; then
+  [[ -z "$storage_account" ]] && fatal "--storage-account is required with --from-blob"
+  [[ -z "$blob_prefix" ]] && blob_prefix="$dataset_repo_id"
+fi
+
 case "$policy_type" in
   act|diffusion) ;;
   *) fatal "Unsupported policy type: $policy_type (use: act, diffusion)" ;;
@@ -252,6 +285,12 @@ if [[ "$config_preview" == "true" ]]; then
   print_kv "Save Freq" "$save_freq"
   print_kv "WANDB" "$wandb_enable"
   print_kv "Register Model" "${register_checkpoint:-<none>}"
+  if [[ "$from_blob" == "true" ]]; then
+    print_kv "Data Source" "Azure Blob ($storage_account/$storage_container/$blob_prefix)"
+    print_kv "Dataset Root" "$dataset_root"
+  else
+    print_kv "Data Source" "HuggingFace Hub"
+  fi
   print_kv "Subscription" "$subscription_id"
   print_kv "Resource Group" "$resource_group"
   print_kv "Workspace" "$workspace_name"
@@ -286,10 +325,11 @@ fi
 #
 # The AzureML job runs a training entry script that:
 # 1. Installs LeRobot dependencies from the workflow manifest
-# 2. Authenticates with HuggingFace Hub
-# 3. Configures MLflow tracking
-# 4. Runs lerobot-train with appropriate arguments
-# 5. Registers the final checkpoint to Azure ML
+# 2. Authenticates with HuggingFace Hub (skipped when --from-blob is set)
+# 3. Optionally downloads the dataset from Azure Blob Storage
+# 4. Configures MLflow tracking
+# 5. Runs lerobot-train with appropriate arguments
+# 6. Registers the final checkpoint to Azure ML
 #------------------------------------------------------------------------------
 
 # Build the inline training command
@@ -308,11 +348,6 @@ if [[ ! -f "${LEROBOT_REQUIREMENTS}" ]]; then
 fi
 uv pip install --system --requirement "${LEROBOT_REQUIREMENTS}"
 
-# HuggingFace auth
-if [[ -n "${HF_TOKEN:-}" ]]; then
-  python3 -c "from huggingface_hub import login; login(token=\"${HF_TOKEN}\", add_to_git_credential=False)"
-fi
-
 # Build lerobot-train args
 train_args=(
   --dataset.repo_id="${DATASET_REPO_ID}"
@@ -321,6 +356,21 @@ train_args=(
   --job_name="${JOB_NAME}"
   --policy.device=cuda
 )
+
+# Resolve data source: Azure Blob Storage or HuggingFace Hub
+if [[ -n "${STORAGE_ACCOUNT:-}" ]]; then
+  echo "Downloading dataset from Azure Blob Storage (${STORAGE_ACCOUNT}/${STORAGE_CONTAINER}/${BLOB_PREFIX})..."
+  python3 -m training.il.scripts.lerobot.download_dataset
+  FULL_DATASET_PATH="${DATASET_ROOT}/${DATASET_REPO_ID}"
+  echo "Dataset materialized at: ${FULL_DATASET_PATH}"
+  train_args+=(
+    --dataset.root="${FULL_DATASET_PATH}"
+    --dataset.use_imagenet_stats=false
+    --dataset.video_backend=pyav
+  )
+elif [[ -n "${HF_TOKEN:-}" ]]; then
+  python3 -c "from huggingface_hub import login; login(token=\"${HF_TOKEN}\", add_to_git_credential=False)"
+fi
 
 if [[ "${WANDB_ENABLE:-true}" == "true" ]]; then
   train_args+=(--wandb.enable=true)
@@ -388,6 +438,7 @@ az_args=(
   --resource-group "$resource_group"
   --workspace-name "$workspace_name"
   --file "$job_file"
+  --set "code=$REPO_ROOT"
   --set "environment=azureml:${environment_name}:${environment_version}"
 )
 
@@ -421,6 +472,15 @@ az_args+=(
 [[ -n "$eval_freq" ]]           && az_args+=(--set "inputs.eval_freq=$eval_freq")
 [[ -n "$register_checkpoint" ]] && az_args+=(--set "inputs.register_checkpoint=$register_checkpoint")
 
+if [[ "$from_blob" == "true" ]]; then
+  az_args+=(
+    --set "inputs.storage_account=$storage_account"
+    --set "inputs.storage_container=$storage_container"
+    --set "inputs.blob_prefix=$blob_prefix"
+    --set "inputs.dataset_root=$dataset_root"
+  )
+fi
+
 # Environment variables
 az_args+=(
   --set "environment_variables.AZURE_SUBSCRIPTION_ID=$subscription_id"
@@ -442,6 +502,7 @@ info "  Dataset: $dataset_repo_id"
 info "  Policy: $policy_type"
 info "  Job Name: $job_name"
 info "  Image: $image"
+[[ "$from_blob" == "true" ]] && info "  Data Source: Azure Blob ($storage_account/$storage_container/$blob_prefix)"
 
 job_result=$("${az_args[@]}") || fatal "Job submission failed"
 
@@ -466,3 +527,6 @@ print_kv "Compute" "${compute:-<not set>}"
 print_kv "Instance Type" "$instance_type"
 print_kv "Environment" "${environment_name}:${environment_version}"
 print_kv "Workspace" "$workspace_name"
+if [[ "$from_blob" == "true" ]]; then
+  print_kv "Data Source" "Azure Blob ($storage_account/$storage_container/$blob_prefix)"
+fi

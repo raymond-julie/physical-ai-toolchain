@@ -44,6 +44,10 @@ inputs:
   wandb_enable: "true"
   wandb_project: lerobot-training
   register_checkpoint: none
+  storage_account: ""
+  storage_container: datasets
+  blob_prefix: ""
+  dataset_root: /workspace/data
   subscription_id: placeholder
   resource_group: placeholder
   workspace_name: placeholder
@@ -66,6 +70,11 @@ environment_variables:
   WANDB_ENABLE: ${{inputs.wandb_enable}}
   WANDB_PROJECT: ${{inputs.wandb_project}}
   REGISTER_CHECKPOINT: ${{inputs.register_checkpoint}}
+  STORAGE_ACCOUNT: ${{inputs.storage_account}}
+  STORAGE_CONTAINER: ${{inputs.storage_container}}
+  BLOB_PREFIX: ${{inputs.blob_prefix}}
+  DATASET_ROOT: ${{inputs.dataset_root}}
+  AZURE_AUTHORITY_HOST: https://login.microsoftonline.com
   TRAINING_CHECKPOINT_OUTPUT: ${{outputs.checkpoints}}
   # The following are set by submit-azureml-lerobot-training.sh via --set flags
   # AZURE_SUBSCRIPTION_ID: <set by script>
