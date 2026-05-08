@@ -59,6 +59,34 @@ locals {
 }
 
 // ============================================================
+// AKS Node Resource Group Policy Exemptions
+// ============================================================
+// The AKS RP creates a managed node resource group (MC_*) during cluster
+// provisioning. Subscription-level tag policies block this because the MC RG
+// is created by the AKS RP without custom tags. These waivers allow AKS to
+// provision while keeping tag enforcement on all other resource groups.
+
+resource "azurerm_subscription_policy_exemption" "aks_owner_tag" {
+  name                            = "aks-mc-rg-owner-tag-exemption"
+  subscription_id                 = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  policy_assignment_id            = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/providers/Microsoft.Authorization/policyAssignments/require-owner-tag-on-rg"
+  exemption_category              = "Waiver"
+  display_name                    = "AKS MC Resource Group - Owner Tag"
+  description                     = "AKS-managed node resource groups are created by the AKS RP without custom tags"
+}
+
+resource "azurerm_subscription_policy_exemption" "aks_initiative_tag" {
+  name                            = "aks-mc-rg-initiative-tag-exemption"
+  subscription_id                 = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+  policy_assignment_id            = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/providers/Microsoft.Authorization/policyAssignments/require-initiative-tag-on-rg"
+  exemption_category              = "Waiver"
+  display_name                    = "AKS MC Resource Group - Initiative Tag"
+  description                     = "AKS-managed node resource groups are created by the AKS RP without custom tags"
+}
+
+data "azurerm_client_config" "current" {}
+
+// ============================================================
 // Platform Module - Shared Services
 // ============================================================
 
@@ -208,4 +236,7 @@ module "sil" {
 
   // Feature flags
   should_enable_private_endpoint = var.should_enable_private_endpoint
+
+  // Tags
+  tags = var.tags
 }

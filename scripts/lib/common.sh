@@ -76,7 +76,7 @@ pull_and_verify_chart() {
     fatal "helm pull failed for $chart_ref $version"
 
   local tgz
-  tgz=$(find "$output_dir" -maxdepth 1 -name '*.tgz' -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)
+  tgz=$(find "$output_dir" -maxdepth 1 -name '*.tgz' | head -1)
   [[ -n "$tgz" ]] || fatal "No .tgz found in $output_dir after helm pull"
 
   if [[ -n "$expected_sha" ]]; then
@@ -85,7 +85,7 @@ pull_and_verify_chart() {
     if [[ "$actual_sha" != "$expected_sha" ]]; then
       fatal "SHA256 mismatch for $tgz: expected=$expected_sha actual=$actual_sha. Run scripts/update-chart-hashes.sh to update pinned hashes."
     fi
-    info "Chart hash verified: $tgz ($actual_sha)"
+    info "Chart hash verified: $tgz ($actual_sha)" >&2
   else
     warn "No expected hash provided for $chart_ref $version — skipping verification. Run scripts/update-chart-hashes.sh to generate and pin a hash."
   fi

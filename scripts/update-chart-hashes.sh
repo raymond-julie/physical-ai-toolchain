@@ -65,7 +65,7 @@ fi
 
 update_default() {
   local var_name="$1" new_value="$2"
-  sed -i "/^${var_name}=/s/:-[^}]*/:-${new_value}/" "$defaults_conf"
+  sed -i '' "/^${var_name}=/s/:-[^}]*/:-${new_value}/" "$defaults_conf"
 }
 
 ensure_v_prefix() {
@@ -84,7 +84,7 @@ pull_chart_sha() {
   helm pull "$chart_ref" --version "$version" --destination "$dest" || \
     fatal "helm pull failed for $chart_ref $version"
   local tgz
-  tgz=$(find "$dest" -maxdepth 1 -name '*.tgz' -printf '%T@ %p\n' | sort -rn | head -1 | cut -d' ' -f2-)
+  tgz=$(find "$dest" -maxdepth 1 -name '*.tgz' | head -1)
   [[ -n "$tgz" ]] || fatal "No .tgz found in $dest after helm pull"
   sha256sum "$tgz" | awk '{print $1}'
 }

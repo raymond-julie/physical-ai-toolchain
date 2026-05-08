@@ -46,6 +46,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   workload_identity_enabled         = true
   role_based_access_control_enabled = true
   node_os_upgrade_channel           = "NodeImage"
+  tags                              = var.tags
 
   default_node_pool {
     name                        = "system"
