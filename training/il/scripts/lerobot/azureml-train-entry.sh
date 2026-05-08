@@ -21,9 +21,12 @@ fi
 uv pip install --system --requirement "${LEROBOT_REQUIREMENTS}"
 
 # Build lerobot-train args
+# `--policy.push_to_hub=false` because we register checkpoints to Azure ML, not
+# HuggingFace Hub; without it lerobot-train requires `policy.repo_id`.
 train_args=(
   --dataset.repo_id="${DATASET_REPO_ID}"
   --policy.type="${POLICY_TYPE}"
+  --policy.push_to_hub=false
   --output_dir="${OUTPUT_DIR}"
   --job_name="${JOB_NAME}"
   --policy.device=cuda
