@@ -536,15 +536,23 @@ class LeRobotLoader:
             # Get task index
             task_index = int(table.column("task_index")[0].as_py()) if "task_index" in col_names else 0
 
-            # Find video paths
+            # Find video paths. Honor per-episode video chunk/file indices
+            # recorded in meta/episodes parquet so the path resolves to the
+            # correct MP4 segment when video and data parquets are chunked
+            # independently (LeRobot v3 layout).
             video_paths: dict[str, Path] = {}
             for feature_name, feature_info in info.features.items():
                 if feature_info.get("dtype") == "video":
                     video_key = feature_name
+                    video_location = self._lookup_video_location(episode_index, video_key)
+                    if video_location is not None:
+                        video_chunk_idx, video_file_idx = video_location
+                    else:
+                        video_chunk_idx, video_file_idx = chunk_idx, file_idx
                     video_rel_path = self._format_path(
                         self._get_video_template(info, video_key),
-                        chunk_idx,
-                        file_idx,
+                        video_chunk_idx,
+                        video_file_idx,
                         video_key,
                         episode_index=episode_index,
                     )
@@ -725,6 +733,13 @@ class LeRobotLoader:
         """
         Get the video file path for an episode and camera.
 
+        In LeRobot v3 datasets the data parquet and per-camera videos are
+        chunked independently — many episodes can share a data parquet while
+        living in different MP4 segments. The episodes meta parquet records
+        the per-camera ``videos/<camera>/chunk_index`` and ``file_index`` for
+        each episode; we honor those when present and fall back to the data
+        parquet's location for v2.x layouts (one episode per file).
+
         Args:
             episode_index: Episode index.
             camera_key: Camera feature key (e.g., 'observation.images.color').
@@ -733,7 +748,11 @@ class LeRobotLoader:
             Path to the video file, or None if not found.
         """
         info = self._load_info()
-        chunk_idx, file_idx = self._find_episode_location(episode_index)
+        video_location = self._lookup_video_location(episode_index, camera_key)
+        if video_location is not None:
+            chunk_idx, file_idx = video_location
+        else:
+            chunk_idx, file_idx = self._find_episode_location(episode_index)
 
         video_rel_path = self._format_path(
             self._get_video_template(info, camera_key),
@@ -746,6 +765,44 @@ class LeRobotLoader:
 
         if video_full_path.exists():
             return video_full_path
+        return None
+
+    def _lookup_video_location(
+        self, episode_index: int, camera_key: str
+    ) -> tuple[int, int] | None:
+        """Read per-episode video chunk/file indices from meta/episodes parquet.
+
+        Returns ``(chunk_index, file_index)`` for the given camera, or None
+        when the columns are missing (older datasets) or the episode is not
+        recorded.
+        """
+        meta_episodes_dir = self.base_path / "meta" / "episodes"
+        if not meta_episodes_dir.exists():
+            return None
+
+        chunk_col = f"videos/{camera_key}/chunk_index"
+        file_col = f"videos/{camera_key}/file_index"
+
+        for chunk_dir in sorted(meta_episodes_dir.iterdir()):
+            if not chunk_dir.is_dir() or not chunk_dir.name.startswith("chunk-"):
+                continue
+            for parquet_file in sorted(chunk_dir.glob("*.parquet")):
+                try:
+                    table = pq.read_table(parquet_file)
+                    if not {"episode_index", chunk_col, file_col}.issubset(table.column_names):
+                        continue
+                    mask = pa.array(
+                        [int(value) == episode_index for value in table.column("episode_index").to_pylist()]
+                    )
+                    row = table.filter(mask)
+                    if row.num_rows == 0:
+                        continue
+                    return int(row.column(chunk_col)[0].as_py()), int(row.column(file_col)[0].as_py())
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to read video location from %s: %s", parquet_file, type(exc).__name__
+                    )
+
         return None
 
     def get_video_time_window(self, episode_index: int, camera_key: str) -> tuple[float, float] | None:

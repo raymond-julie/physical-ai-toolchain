@@ -35,6 +35,21 @@ except ImportError:
         return False
 
 
+def _video_cache_query(video_path: Path | str | None) -> str:
+    """Return ``?v=<mtime>`` for a video clip, or empty when unavailable.
+
+    The mtime changes when the cached clip is regenerated, which forces
+    browsers to refetch instead of reusing a previously-cached corrupt body.
+    """
+    if video_path is None:
+        return ""
+    try:
+        mtime = int(Path(video_path).stat().st_mtime)
+    except OSError:
+        return ""
+    return f"?v={mtime}"
+
+
 class LeRobotFormatHandler:
     """Handler for LeRobot parquet-format datasets."""
 
@@ -182,14 +197,26 @@ class LeRobotFormatHandler:
             )
 
             video_urls: dict[str, str] = {}
-            for camera in lr_data.video_paths:
-                video_urls[camera] = f"/api/datasets/{dataset_id}/episodes/{episode_idx}/video/{camera}"
+            # Append a content-derived cache-buster (file mtime of the cached
+            # per-episode clip) so the URL changes whenever the on-disk clip is
+            # regenerated. Without this, browsers can keep using a previously
+            # cached corrupt response because Chromium's HTML <video> element
+            # does not always honor ETag/Last-Modified revalidation for media.
+            for camera, video_path in lr_data.video_paths.items():
+                cache_path = self._video_cache_path(dataset_id, episode_idx, camera)
+                buster_path = cache_path if cache_path and cache_path.exists() else video_path
+                video_urls[camera] = (
+                    f"/api/datasets/{dataset_id}/episodes/{episode_idx}/video/{camera}"
+                    f"{_video_cache_query(buster_path)}"
+                )
 
-            # For blob datasets, add video URLs for cameras without local files
+            # For blob datasets, add video URLs for cameras without local files.
             if dataset_info is not None:
                 for feat_name, feat in dataset_info.features.items():
                     if feat.dtype == "video" and feat_name not in video_urls:
-                        video_urls[feat_name] = f"/api/datasets/{dataset_id}/episodes/{episode_idx}/video/{feat_name}"
+                        video_urls[feat_name] = (
+                            f"/api/datasets/{dataset_id}/episodes/{episode_idx}/video/{feat_name}"
+                        )
 
             return EpisodeData(
                 meta=EpisodeMeta(
