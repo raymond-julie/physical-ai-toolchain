@@ -49,7 +49,6 @@ Submit Isaac Lab reinforcement learning and LeRobot behavioral cloning training 
 | `policy_type`     | `act`                                           | Policy architecture: `act`, `diffusion` |
 | `job_name`        | `lerobot-act-training`                          | Unique job identifier                   |
 | `image`           | `pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime` | Container image                         |
-| `wandb_enable`    | `true`                                          | Enable WANDB logging                    |
 | `save_freq`       | `5000`                                          | Checkpoint save frequency               |
 
 ## 🔧 Environment Variables

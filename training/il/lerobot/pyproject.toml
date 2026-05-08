@@ -20,7 +20,6 @@ dependencies = [
     "lerobot==0.4.4",
     "pyarrow==23.0.1",
     "torchcodec==0.10.0; platform_machine == 'x86_64' or platform_machine == 'AMD64'",
-    "wandb==0.24.2",
 ]
 
 [build-system]

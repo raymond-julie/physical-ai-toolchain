@@ -5,6 +5,12 @@ set -euo pipefail
 
 echo "=== LeRobot AzureML Training ==="
 
+# wandb is a transitive dependency of lerobot==0.4.4 (hard pin in upstream
+# pyproject.toml). Setting WANDB_MODE=disabled prevents the client from
+# initializing or making network calls; logging goes to MLflow / Azure ML only.
+export WANDB_MODE=disabled
+export WANDB_DISABLED=true
+
 # Restore `training/` prefix so absolute references (training/il/...) and python -m
 # `training.il.scripts...` resolve when cwd is the contents of training/.
 if [[ ! -e training ]]; then ln -s . training; fi
@@ -23,6 +29,8 @@ uv pip install --system --requirement "${LEROBOT_REQUIREMENTS}"
 # Build lerobot-train args
 # `--policy.push_to_hub=false` because we register checkpoints to Azure ML, not
 # HuggingFace Hub; without it lerobot-train requires `policy.repo_id`.
+# `--wandb.enable=false` because logging goes through MLflow / Azure ML; we do
+# not use Weights & Biases.
 train_args=(
   --dataset.repo_id="${DATASET_REPO_ID}"
   --policy.type="${POLICY_TYPE}"
@@ -30,6 +38,7 @@ train_args=(
   --output_dir="${OUTPUT_DIR}"
   --job_name="${JOB_NAME}"
   --policy.device=cuda
+  --wandb.enable=false
 )
 
 # Resolve data source: Azure Blob Storage when STORAGE_ACCOUNT is set, otherwise HuggingFace Hub
@@ -45,13 +54,6 @@ if [[ -n "${STORAGE_ACCOUNT:-}" ]]; then
   )
 elif [[ -n "${HF_TOKEN:-}" ]]; then
   python3 -c "from huggingface_hub import login; login(token='${HF_TOKEN}', add_to_git_credential=False)"
-fi
-
-if [[ "${WANDB_ENABLE:-true}" == "true" ]]; then
-  train_args+=(--wandb.enable=true)
-  [[ -n "${WANDB_PROJECT:-}" ]] && train_args+=(--wandb.project="${WANDB_PROJECT}")
-else
-  train_args+=(--wandb.enable=false)
 fi
 
 [[ -n "${POLICY_REPO_ID:-}" ]] && train_args+=(--policy.repo_id="${POLICY_REPO_ID}")

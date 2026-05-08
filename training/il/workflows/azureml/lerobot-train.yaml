@@ -41,8 +41,6 @@ inputs:
   batch_size: none
   eval_freq: none
   save_freq: "5000"
-  wandb_enable: "true"
-  wandb_project: lerobot-training
   register_checkpoint: none
   storage_account: ""
   storage_container: datasets

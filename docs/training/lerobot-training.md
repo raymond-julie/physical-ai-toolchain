@@ -15,7 +15,7 @@ keywords:
   - training
 ---
 
-LeRobot behavioral cloning training for ACT and Diffusion policy architectures. Training runs on Azure ML and OSMO platforms using HuggingFace Hub datasets with WANDB and MLflow experiment tracking.
+LeRobot behavioral cloning training for ACT and Diffusion policy architectures. Training runs on Azure ML and OSMO platforms using HuggingFace Hub datasets with MLflow experiment tracking on Azure ML.
 
 ## 📋 Prerequisites
 
@@ -24,7 +24,6 @@ LeRobot behavioral cloning training for ACT and Diffusion policy architectures. 
 | Infrastructure    | AKS cluster deployed via [Infrastructure Guide](https://github.com/microsoft/physical-ai-toolchain/blob/main/deploy/README.md) |
 | Azure ML or OSMO  | At least one platform configured (see Platform Selection section)                                                              |
 | HuggingFace token | Required for private datasets (`hf_token` credential)                                                                          |
-| WANDB API key     | Required when `--wandb-enable` is set (default on OSMO)                                                                        |
 
 ## 🚀 Quick Start
 
@@ -75,9 +74,9 @@ Select the architecture with `--policy-type`:
 | Aspect              | Azure ML                       | OSMO                                    |
 |---------------------|--------------------------------|-----------------------------------------|
 | Submission          | `az ml job create`             | `osmo workflow submit`                  |
-| Experiment tracking | MLflow (managed)               | WANDB (default) + MLflow (optional)     |
+| Experiment tracking | MLflow (managed)               | MLflow (Azure ML backend)               |
 | Credential handling | Azure ML environment variables | `osmo credential set` injection         |
-| Dataset delivery    | HuggingFace Hub download       | Hub download or OSMO bucket mount       |
+| Dataset delivery    | HuggingFace Hub or Azure Blob  | Hub download or OSMO bucket mount       |
 | Pipeline support    | Manual multi-step              | `run-lerobot-pipeline.sh` orchestration |
 
 ## ⚙️ Training Configuration
@@ -112,9 +111,6 @@ OSMO injects credentials at workflow runtime:
 ```bash
 # HuggingFace token (required for private datasets)
 osmo credential set hf_token --generic --value "hf_..."
-
-# WANDB API key (required when wandb_enable=true)
-osmo credential set wandb_api_key --generic --value "..."
 ```
 
 ### Azure ML Credentials
@@ -129,17 +125,6 @@ Azure ML uses workspace-managed identity. Set environment variables for custom c
 | `AZUREML_COMPUTE`        | Compute target name     |
 
 ## 📊 Experiment Logging
-
-### WANDB (Default on OSMO)
-
-WANDB logging is enabled by default on OSMO workflows. Requires `wandb_api_key` credential.
-
-```bash
-# Disable WANDB
-./scripts/submit-osmo-lerobot-training.sh \
-  -d user/dataset \
-  --wandb-disable
-```
 
 ### MLflow (Azure ML Managed)
 
@@ -208,7 +193,7 @@ The `run-lerobot-pipeline.sh` script orchestrates the full lifecycle on OSMO:
 
 ## 🔗 Related Documentation
 
-- [Experiment Tracking](experiment-tracking.md) for MLflow and WANDB configuration
+- [Experiment Tracking](experiment-tracking.md) for MLflow configuration
 - [AzureML Workflows](https://github.com/microsoft/physical-ai-toolchain/blob/main/workflows/azureml/README.md) for job template reference
 - [OSMO Workflows](https://github.com/microsoft/physical-ai-toolchain/blob/main/workflows/osmo/README.md) for workflow template reference
 - [Scripts Reference](../reference/scripts.md) for full CLI parameter tables

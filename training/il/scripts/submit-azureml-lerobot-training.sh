@@ -63,11 +63,6 @@ TRAINING HYPERPARAMETERS:
         --eval-freq N             Evaluation frequency
         --save-freq N             Checkpoint save frequency (default: 5000)
 
-LOGGING OPTIONS:
-        --wandb-enable            Enable WANDB logging (default)
-        --no-wandb                Disable WANDB logging
-        --wandb-project NAME      WANDB project name (default: lerobot-training)
-
 CHECKPOINT REGISTRATION:
     -r, --register-checkpoint NAME  Model name for Azure ML registration
 
@@ -186,8 +181,6 @@ batch_size="${BATCH_SIZE:-}"
 eval_freq="${EVAL_FREQ:-}"
 save_freq="${SAVE_FREQ:-5000}"
 
-wandb_enable="${WANDB_ENABLE:-true}"
-wandb_project="${WANDB_PROJECT:-lerobot-training}"
 register_checkpoint="${REGISTER_CHECKPOINT:-}"
 
 subscription_id="${AZURE_SUBSCRIPTION_ID:-$(get_subscription_id)}"
@@ -231,9 +224,6 @@ while [[ $# -gt 0 ]]; do
     --batch-size)                 batch_size="$2"; shift 2 ;;
     --eval-freq)                  eval_freq="$2"; shift 2 ;;
     --save-freq)                  save_freq="$2"; shift 2 ;;
-    --wandb-enable)               wandb_enable="true"; shift ;;
-    --no-wandb)                   wandb_enable="false"; shift ;;
-    --wandb-project)              wandb_project="$2"; shift 2 ;;
     -r|--register-checkpoint)     register_checkpoint="$2"; shift 2 ;;
     --subscription-id)            subscription_id="$2"; shift 2 ;;
     --resource-group)             resource_group="$2"; shift 2 ;;
@@ -283,7 +273,6 @@ if [[ "$config_preview" == "true" ]]; then
   print_kv "Training Steps" "${training_steps:-<default>}"
   print_kv "Batch Size" "${batch_size:-<default>}"
   print_kv "Save Freq" "$save_freq"
-  print_kv "WANDB" "$wandb_enable"
   print_kv "Register Model" "${register_checkpoint:-<none>}"
   if [[ "$from_blob" == "true" ]]; then
     print_kv "Data Source" "Azure Blob ($storage_account/$storage_container/$blob_prefix)"
@@ -357,8 +346,6 @@ az_args+=(
   --set "inputs.job_name=$job_name"
   --set "inputs.output_dir=$output_dir"
   --set "inputs.save_freq=$save_freq"
-  --set "inputs.wandb_enable=$wandb_enable"
-  --set "inputs.wandb_project=$wandb_project"
   --set "inputs.subscription_id=$subscription_id"
   --set "inputs.resource_group=$resource_group"
   --set "inputs.workspace_name=$workspace_name"
@@ -399,8 +386,6 @@ az_args+=(
   --set "environment_variables.JOB_NAME=$job_name"
   --set "environment_variables.OUTPUT_DIR=$output_dir"
   --set "environment_variables.SAVE_FREQ=$save_freq"
-  --set "environment_variables.WANDB_ENABLE=$wandb_enable"
-  --set "environment_variables.WANDB_PROJECT=$wandb_project"
 )
 
 [[ -n "$policy_repo_id" ]]      && az_args+=(--set "environment_variables.POLICY_REPO_ID=$policy_repo_id")
