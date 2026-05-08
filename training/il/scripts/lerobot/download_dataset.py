@@ -534,6 +534,65 @@ def _verify_file_paths(dataset_dir: Path, info: dict) -> None:
         print(f"[verify] actual video files ({len(video_files)}): {sample}")
 
 
+def cast_bool_features_to_float(dataset_dir: Path, info: dict) -> None:
+    """Cast bool feature columns to float32 in info.json and all data parquet files.
+
+    LeRobot's normalize_processor performs ``(tensor - mean) / std`` on every
+    non-image observation. Bool tensors don't support subtraction, so any
+    bool-typed feature triggers ``RuntimeError: Subtraction, the - operator,
+    with two bool tensors is not supported.``
+
+    Promote bool columns to float32 (False -> 0.0, True -> 1.0) so the existing
+    mean/std normalization path works without further changes.
+
+    Args:
+        dataset_dir: Path to dataset directory.
+        info: Parsed info.json contents (modified in-place).
+    """
+    import pyarrow as pa
+    import pyarrow.compute
+    import pyarrow.parquet as pq
+
+    info_path = dataset_dir / "meta" / "info.json"
+    features = info.get("features", {})
+    bool_keys = [k for k, v in features.items() if v.get("dtype") == "bool"]
+
+    if not bool_keys:
+        return
+
+    print(f"Casting bool features to float32: {bool_keys}")
+
+    data_dir = dataset_dir / "data"
+    data_files = sorted(data_dir.rglob("*.parquet"))
+    for fpath in data_files:
+        table = pq.read_table(fpath)
+        modified = False
+        for key in bool_keys:
+            if key not in table.column_names:
+                continue
+            col = table[key]
+            # Columns may be List<bool> (shape > 1) or scalar bool.
+            if pa.types.is_list(col.type) or pa.types.is_large_list(col.type):
+                # cast inner type
+                new_col = pa.compute.cast(col, pa.list_(pa.float32()))
+            elif pa.types.is_boolean(col.type):
+                new_col = pa.compute.cast(col, pa.float32())
+            else:
+                continue
+            idx = table.column_names.index(key)
+            table = table.set_column(idx, key, new_col)
+            modified = True
+        if modified:
+            pq.write_table(table, fpath)
+
+    for key in bool_keys:
+        features[key]["dtype"] = "float32"
+
+    with open(info_path, "w") as f:
+        json.dump(info, f, indent=4)
+    print(f"Patched {len(bool_keys)} bool features to float32 in info.json")
+
+
 def prepare_dataset() -> Path:
     """Download and prepare dataset from Azure Blob Storage using environment variables.
 
@@ -571,6 +630,11 @@ def prepare_dataset() -> Path:
 
     info = verify_dataset(dataset_dir)
     if info:
+        # Cast bool features to float32 unconditionally: lerobot's normalizer
+        # cannot subtract bool tensors, and the mean/std stats path needs a
+        # numeric dtype regardless of dataset version.
+        cast_bool_features_to_float(dataset_dir, info)
+
         # The patch helpers (path conversion, ImageNet stats injection, video
         # timestamp realignment, tasks.jsonl/episodes_stats.jsonl synthesis) were
         # written for lerobot v0.3.x which expects v2.1 datasets. lerobot >= 0.4
