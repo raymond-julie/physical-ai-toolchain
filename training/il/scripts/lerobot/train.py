@@ -168,7 +168,14 @@ def run_training(cmd: list[str], source: str = "osmo-lerobot-training") -> int:
     last_checkpoint_check = 0.0
     last_system_check = 0.0
 
-    with mlflow.start_run(run_name=os.environ.get("JOB_NAME", "lerobot-training")) as run:
+    # AzureML jobs auto-create an MLflow run and expose its ID in MLFLOW_RUN_ID.
+    # mlflow.start_run() picks it up automatically when no args are passed; passing
+    # a run_name in that case fails because the existing run is already named.
+    start_run_kwargs: dict = {}
+    if not os.environ.get("MLFLOW_RUN_ID"):
+        start_run_kwargs["run_name"] = os.environ.get("JOB_NAME", "lerobot-training")
+
+    with mlflow.start_run(**start_run_kwargs) as run:
         print(f"[MLflow] Run ID: {run.info.run_id}")
 
         params = _build_train_params()

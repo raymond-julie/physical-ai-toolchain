@@ -98,8 +98,19 @@ def bootstrap_mlflow(
 
         mlflow.set_tracking_uri(tracking_uri)
 
-        resolved_name = experiment_name or f"lerobot-{policy_type}-{job_name}"
-        mlflow.set_experiment(resolved_name)
+        # When running inside an Azure ML job, the AzureML compute target
+        # creates an MLflow run automatically and sets MLFLOW_RUN_ID. The run
+        # already lives in an Azure-ML-assigned experiment, and overriding the
+        # experiment afterward causes start_run() to fail with:
+        #   Cannot start run with ID <id> because active experiment ID does
+        #   not match environment run ID.
+        # Skip set_experiment() in that case and attach to the existing run.
+        if os.environ.get("MLFLOW_RUN_ID"):
+            resolved_name = os.environ.get("MLFLOW_EXPERIMENT_NAME", "azureml-managed")
+            print("[INFO] Detected MLFLOW_RUN_ID: attaching to AzureML-managed run")
+        else:
+            resolved_name = experiment_name or f"lerobot-{policy_type}-{job_name}"
+            mlflow.set_experiment(resolved_name)
 
         # Skip mlflow.autolog: it tries to use the tracking URI as a model
         # registry URI, which the Azure ML MLflow endpoint does not implement.
