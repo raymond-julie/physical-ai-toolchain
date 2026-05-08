@@ -454,7 +454,11 @@ def ensure_episodes_stats(dataset_dir: Path, info: dict) -> None:
 
 
 def _verify_file_paths(dataset_dir: Path, info: dict) -> None:
-    """Print diagnostic info about expected vs actual file paths."""
+    """Print diagnostic info about expected vs actual file paths.
+
+    Supports both v2.1 (`episode_chunk`/`episode_index`) and v3.0
+    (`chunk_index`/`file_index`) path templates.
+    """
     total_episodes = info.get("total_episodes", 0)
     chunks_size = info.get("chunks_size", 1000)
     data_path = info.get("data_path", "")
@@ -468,11 +472,30 @@ def _verify_file_paths(dataset_dir: Path, info: dict) -> None:
     video_keys = [k for k, v in features.items() if v.get("dtype") in ("video", "image")]
     print(f"[verify] video_keys: {video_keys}")
 
+    is_v30_layout = "{file_index" in data_path or "{chunk_index" in data_path
+
+    def _format_data(ep: int) -> str | None:
+        try:
+            if is_v30_layout:
+                return data_path.format(chunk_index=ep // chunks_size, file_index=0)
+            return data_path.format(episode_chunk=ep // chunks_size, episode_index=ep)
+        except (KeyError, IndexError):
+            return None
+
+    def _format_video(vk: str, ep: int) -> str | None:
+        try:
+            if is_v30_layout:
+                return video_path.format(video_key=vk, chunk_index=ep // chunks_size, file_index=0)
+            return video_path.format(video_key=vk, episode_chunk=ep // chunks_size, episode_index=ep)
+        except (KeyError, IndexError):
+            return None
+
     # Check data files
     missing_data = []
     for ep in range(min(total_episodes, 5)):
-        ep_chunk = ep // chunks_size
-        fpath = data_path.format(episode_chunk=ep_chunk, episode_index=ep)
+        fpath = _format_data(ep)
+        if fpath is None:
+            continue
         full = dataset_dir / fpath
         exists = full.is_file()
         if not exists:
@@ -486,8 +509,9 @@ def _verify_file_paths(dataset_dir: Path, info: dict) -> None:
     missing_video = []
     for vk in video_keys:
         for ep in range(min(total_episodes, 5)):
-            ep_chunk = ep // chunks_size
-            fpath = video_path.format(video_key=vk, episode_chunk=ep_chunk, episode_index=ep)
+            fpath = _format_video(vk, ep)
+            if fpath is None:
+                continue
             full = dataset_dir / fpath
             exists = full.is_file()
             if not exists:
@@ -547,11 +571,18 @@ def prepare_dataset() -> Path:
 
     info = verify_dataset(dataset_dir)
     if info:
-        patch_info_paths(dataset_dir, info)
-        patch_image_stats(dataset_dir, info)
-        fix_video_timestamps(dataset_dir, info)
-        ensure_tasks_jsonl(dataset_dir, info)
-        ensure_episodes_stats(dataset_dir, info)
+        # The patch helpers (path conversion, ImageNet stats injection, video
+        # timestamp realignment, tasks.jsonl/episodes_stats.jsonl synthesis) were
+        # written for lerobot v0.3.x which expects v2.1 datasets. lerobot >= 0.4
+        # requires v3.0 and consumes tasks.parquet / episodes_stats.parquet
+        # natively, so the helpers actively break things.
+        # Run them only when explicitly requested for older lerobot installs.
+        if os.environ.get("LEROBOT_CONVERT_TO_V21", "").lower() in ("1", "true", "yes"):
+            patch_info_paths(dataset_dir, info)
+            patch_image_stats(dataset_dir, info)
+            fix_video_timestamps(dataset_dir, info)
+            ensure_tasks_jsonl(dataset_dir, info)
+            ensure_episodes_stats(dataset_dir, info)
         _verify_file_paths(dataset_dir, info)
 
     return dataset_dir
