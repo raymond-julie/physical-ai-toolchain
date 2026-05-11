@@ -492,6 +492,12 @@ variable "should_deploy_dce" {
  * AzureML Compute Configuration - Optional
  */
 
+variable "should_deploy_aks" {
+  type        = bool
+  description = "Whether to deploy AKS cluster (SiL module). Set to false for AzureML managed compute only"
+  default     = true
+}
+
 variable "should_enable_aml_diagnostic_logs" {
   type        = bool
   description = "Whether to enable AML workspace diagnostic logs in Log Analytics"

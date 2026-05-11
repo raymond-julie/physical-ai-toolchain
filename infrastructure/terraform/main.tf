@@ -146,11 +146,12 @@ module "platform" {
 }
 
 // ============================================================
-// SiL Module - AKS + AzureML Extension
+// SiL Module - AKS + AzureML Extension (Optional)
 // ============================================================
 
 module "sil" {
   source = "./modules/sil"
+  count  = var.should_deploy_aks ? 1 : 0
 
   depends_on = [module.platform]
 
