@@ -71,6 +71,7 @@ AZURE CONTEXT:
         --experiment-name NAME    Experiment name override
         --display-name NAME       Display name override
         --stream                  Stream logs after submission
+    -a, --save-as PATH            Write created job state YAML to PATH
 
 ADVANCED:
         --mlflow-token-retries N  MLflow token refresh retries (default: 3)
@@ -190,6 +191,7 @@ instance_type="gpuspot"
 experiment_name=""
 display_name=""
 stream_logs=false
+save_as=""
 config_preview=false
 forward_args=()
 
@@ -228,6 +230,7 @@ while [[ $# -gt 0 ]]; do
     --experiment-name)            experiment_name="$2"; shift 2 ;;
     --display-name)               display_name="$2"; shift 2 ;;
     --stream)                     stream_logs=true; shift ;;
+    -a|--save-as)                 save_as="$2"; shift 2 ;;
     --config-preview)             config_preview=true; shift ;;
     --)                           shift; forward_args=("$@"); break ;;
     *)                            fatal "Unknown option: $1" ;;
@@ -392,6 +395,7 @@ if [[ ${#blob_urls[@]} -gt 0 ]]; then
 fi
 
 [[ ${#forward_args[@]} -gt 0 ]] && az_args+=("${forward_args[@]}")
+[[ -n "$save_as" ]] && az_args+=(--save-as "$save_as")
 az_args+=(--query "name" -o "tsv")
 
 #------------------------------------------------------------------------------
@@ -429,3 +433,4 @@ print_kv "Instance Type" "$instance_type"
 print_kv "Environment" "${environment_name}:${environment_version}"
 print_kv "Workspace" "$workspace_name"
 [[ ${#blob_urls[@]} -gt 0 ]] && print_kv "Blob Datasets" "${#blob_urls[@]}"
+[[ -n "$save_as" ]] && print_kv "Saved Job YAML" "$save_as"
