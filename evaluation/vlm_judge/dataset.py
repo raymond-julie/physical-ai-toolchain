@@ -197,8 +197,8 @@ def _iter_v3(spec: DatasetSpec, views: tuple[str, ...]) -> Iterator[EpisodeRecor
         df = pq.read_table(ep_file).to_pandas()
         for row in df.to_dict(orient="records"):
             ep_idx = int(row["episode_index"])
-            task_idx = int(row["task_index"])
             length = int(row["length"])
+            instruction = _resolve_instruction_v3(row, tasks_by_index)
             video_paths: dict[str, Path] = {}
             from_ts: float | None = None
             to_ts: float | None = None
@@ -215,13 +215,32 @@ def _iter_v3(spec: DatasetSpec, views: tuple[str, ...]) -> Iterator[EpisodeRecor
             yield EpisodeRecord(
                 episode_id=f"{spec.root.name}/episode_{ep_idx:06d}",
                 episode_index=ep_idx,
-                instruction=tasks_by_index.get(task_idx, ""),
+                instruction=instruction,
                 fps=spec.fps,
                 length=length,
                 video_paths=video_paths,
                 from_timestamp=from_ts,
                 to_timestamp=to_ts,
             )
+
+
+def _resolve_instruction_v3(
+    row: dict[str, Any],
+    tasks_by_index: dict[int, str],
+) -> str:
+    # Newer v3 metadata embeds the instruction list per episode under "tasks";
+    # older variants reference the global tasks.parquet via "task_index".
+    tasks_field = row.get("tasks")
+    if tasks_field is not None:
+        if hasattr(tasks_field, "tolist"):
+            tasks_field = tasks_field.tolist()
+        if isinstance(tasks_field, (list, tuple)) and len(tasks_field) > 0:
+            return " | ".join(str(t) for t in tasks_field)
+        if isinstance(tasks_field, str) and tasks_field:
+            return tasks_field
+    if "task_index" in row:
+        return tasks_by_index.get(int(row["task_index"]), "")
+    return ""
 
 
 def _load_tasks_parquet(path: Path) -> dict[int, str]:
