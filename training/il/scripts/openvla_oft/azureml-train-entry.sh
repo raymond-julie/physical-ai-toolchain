@@ -169,6 +169,10 @@ python -m training.il.scripts.openvla_oft.dataset_registration \
 # ---- 6. Train ----
 cd "${OFT_DIR}"
 
+# Disable WandB; metrics flow through MLflow via AzureML autologging.
+export WANDB_MODE=disabled
+export WANDB_DISABLED=true
+
 train_cmd=(
   torchrun --standalone --nnodes 1 --nproc-per-node "${NUM_GPUS}"
   vla-scripts/finetune.py
