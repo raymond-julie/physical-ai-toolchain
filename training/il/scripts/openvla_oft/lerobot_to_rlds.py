@@ -176,23 +176,23 @@ def make_builder_class(
                                             dtype=np.uint8,
                                             encoding_format="jpeg",
                                         ),
-                                        "state": tfds.features.Tensor(shape=(STATE_DIM,), dtype="float32"),
+                                        "state": tfds.features.Tensor(shape=(STATE_DIM,), dtype=np.float32),
                                     }
                                 ),
-                                "action": tfds.features.Tensor(shape=(ACTION_DIM,), dtype="float32"),
-                                "discount": tfds.features.Scalar(dtype="float32"),
-                                "reward": tfds.features.Scalar(dtype="float32"),
-                                "is_first": tfds.features.Scalar(dtype="bool"),
-                                "is_last": tfds.features.Scalar(dtype="bool"),
-                                "is_terminal": tfds.features.Scalar(dtype="bool"),
+                                "action": tfds.features.Tensor(shape=(ACTION_DIM,), dtype=np.float32),
+                                "discount": tfds.features.Scalar(dtype=np.float32),
+                                "reward": tfds.features.Scalar(dtype=np.float32),
+                                "is_first": tfds.features.Scalar(dtype=np.bool_),
+                                "is_last": tfds.features.Scalar(dtype=np.bool_),
+                                "is_terminal": tfds.features.Scalar(dtype=np.bool_),
                                 "language_instruction": tfds.features.Text(),
                             }
                         ),
                         "episode_metadata": tfds.features.FeaturesDict(
                             {
-                                "episode_index": tfds.features.Scalar(dtype="int64"),
-                                "length": tfds.features.Scalar(dtype="int64"),
-                                "success": tfds.features.Scalar(dtype="bool"),
+                                "episode_index": tfds.features.Scalar(dtype=np.int64),
+                                "length": tfds.features.Scalar(dtype=np.int64),
+                                "success": tfds.features.Scalar(dtype=np.bool_),
                             }
                         ),
                     }
