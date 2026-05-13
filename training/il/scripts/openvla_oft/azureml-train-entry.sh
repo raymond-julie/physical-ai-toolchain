@@ -109,12 +109,25 @@ uv pip install "flash-attn==2.5.5" --no-build-isolation || \
 uv pip install decord tensorflow tensorflow_datasets
 
 # ---- 4. Resolve dataset source ----
-#   Priority: pre-mounted AzureML data asset (DATASET_MOUNT) > BLOB_URLS download > raw
-#   DATASET_ROOT pre-populated by caller.
-if [[ -n "${DATASET_MOUNT:-}" ]] && [[ -d "${DATASET_MOUNT}" ]]; then
+#   Priority: pre-mounted AzureML data asset > BLOB_URLS download > raw DATASET_ROOT.
+#
+#   The AzureML K8s extension does NOT substitute ${{inputs.X}} placeholders in
+#   environment_variables, so YAML values like DATASET_MOUNT and BLOB_URLS arrive
+#   as literal strings. We resolve the mount via the canonical AZURE_ML_INPUT_*
+#   env var that the data-capability sidecar exports (mount path of inputs.dataset_asset),
+#   and treat any value still containing "${{" as unsubstituted/empty.
+_strip_placeholder() {
+  local v="${1:-}"
+  [[ "$v" == *'${{'* ]] && echo "" || echo "$v"
+}
+DATASET_MOUNT="$(_strip_placeholder "${DATASET_MOUNT:-}")"
+BLOB_URLS="$(_strip_placeholder "${BLOB_URLS:-}")"
+: "${DATASET_MOUNT:=${AZURE_ML_INPUT_dataset_asset:-}}"
+
+if [[ -n "${DATASET_MOUNT}" ]] && [[ -d "${DATASET_MOUNT}" ]]; then
   echo "[dataset] using AzureML mounted data asset at ${DATASET_MOUNT}"
   DATASET_SOURCE="${DATASET_MOUNT}"
-elif [[ -n "${BLOB_URLS:-}" ]] && [[ "${BLOB_URLS}" != "[]" ]] && [[ "${BLOB_URLS}" != "{}" ]]; then
+elif [[ -n "${BLOB_URLS}" ]] && [[ "${BLOB_URLS}" != "[]" ]] && [[ "${BLOB_URLS}" != "{}" ]]; then
   echo "[dataset] downloading from blob URLs via training.il.scripts.lerobot.download_dataset"
   python -m training.il.scripts.lerobot.download_dataset
   DATASET_SOURCE="${DATASET_ROOT}/${DATASET_REPO_ID}"
