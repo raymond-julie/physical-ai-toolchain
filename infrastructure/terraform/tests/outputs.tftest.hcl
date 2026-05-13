@@ -50,6 +50,10 @@ override_module {
   }
 }
 
+variables {
+  aml_managed_network_isolation_mode = "Disabled"
+}
+
 run "setup" {
   module {
     source = "./tests/setup"
@@ -80,11 +84,6 @@ run "core_outputs_present" {
     condition     = output.key_vault != null
     error_message = "key_vault output should not be null"
   }
-
-  assert {
-    condition     = output.aks_cluster != null
-    error_message = "aks_cluster output should not be null"
-  }
 }
 
 // ============================================================
@@ -104,6 +103,7 @@ run "optional_outputs_null_when_disabled" {
     should_deploy_redis          = false
     should_deploy_grafana        = false
     should_deploy_aml_compute    = false
+    should_deploy_aks            = false
   }
 
   assert {
@@ -124,6 +124,26 @@ run "optional_outputs_null_when_disabled" {
   assert {
     condition     = output.aml_compute_cluster == null
     error_message = "aml_compute_cluster output should be null when AML compute is disabled"
+  }
+
+  assert {
+    condition     = output.aks_cluster == null
+    error_message = "aks_cluster output should be null when AKS is disabled"
+  }
+
+  assert {
+    condition     = output.aks_oidc_issuer_url == null
+    error_message = "aks_oidc_issuer_url output should be null when AKS is disabled"
+  }
+
+  assert {
+    condition     = output.gpu_node_pool_subnets == null
+    error_message = "gpu_node_pool_subnets output should be null when AKS is disabled"
+  }
+
+  assert {
+    condition     = output.node_pools == null
+    error_message = "node_pools output should be null when AKS is disabled"
   }
 }
 

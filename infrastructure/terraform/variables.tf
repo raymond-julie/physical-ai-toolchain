@@ -448,6 +448,12 @@ variable "should_enable_public_network_access" {
   default     = true
 }
 
+variable "should_enable_storage_shared_access_key" {
+  type        = bool
+  description = "Whether to enable Shared Key (SAS token) authorization for the storage account. When false, all requests must use Azure AD authentication (RBAC)"
+  default     = false
+}
+
 variable "should_enable_microsoft_defender" {
   type        = bool
   description = "Whether to enable Microsoft Defender for Containers on the AKS cluster"
@@ -486,10 +492,27 @@ variable "should_deploy_dce" {
  * AzureML Compute Configuration - Optional
  */
 
+variable "should_deploy_aks" {
+  type        = bool
+  description = "Whether to deploy AKS cluster (SiL module). Set to false for AzureML managed compute only"
+  default     = true
+}
+
 variable "should_enable_aml_diagnostic_logs" {
   type        = bool
   description = "Whether to enable AML workspace diagnostic logs in Log Analytics"
   default     = false
+}
+
+variable "aml_managed_network_isolation_mode" {
+  type        = string
+  description = "AzureML workspace managed network isolation mode. This is independent from should_enable_private_endpoint and governs the AzureML workspace managed network only"
+  default     = "AllowOnlyApprovedOutbound"
+
+  validation {
+    condition     = contains(["Disabled", "AllowInternetOutbound", "AllowOnlyApprovedOutbound"], var.aml_managed_network_isolation_mode)
+    error_message = "aml_managed_network_isolation_mode must be one of: Disabled, AllowInternetOutbound, AllowOnlyApprovedOutbound"
+  }
 }
 
 variable "should_deploy_aml_compute" {

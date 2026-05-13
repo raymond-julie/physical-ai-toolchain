@@ -9,15 +9,15 @@ handoffs:
   - label: "🔍 Browse Dataset"
     agent: Dataviewer Developer
     prompt: "Browse the loaded datasets and show me what's available"
-    send: true
+    send: false
   - label: "🏷️ Annotate Episodes"
     agent: Dataviewer Developer
     prompt: "Annotate episodes in the current dataset"
-    send: true
+    send: false
   - label: "🤖 Run VLM Judge"
     agent: Dataviewer Developer
     prompt: "Run the VLM-as-judge harness across the loaded datasets and summarize results"
-    send: true
+    send: false
   - label: "📝 Annotate dataset"
     agent: Dataviewer Developer
     prompt: "/dataviewer-annotate "
