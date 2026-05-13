@@ -1,0 +1,56 @@
+# OpenVLA-OFT Fine-Tuning Job Template
+#
+# Structural template used by submit-azureml-openvla-oft-training.sh. Values
+# below are placeholders and will be overridden at submission time.
+
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+display_name: OpenVLA-OFT Fine-Tuning
+description: Fine-tune OpenVLA with the OFT recipe on a LeRobot v3 dataset (3 imgs + proprio + FiLM + L1 + LoRA).
+experiment_name: openvla-oft-training
+identity:
+  type: managed_identity
+
+code: .
+environment: azureml:openvla-oft-training-env:latest
+compute: azureml:gpu-cluster
+
+inputs:
+  dataset_repo_id: placeholder
+  dataset_name: schaeffler_bimanual
+  vla_path: openvla/openvla-7b
+  openvla_oft_ref: main
+  transformers_fork_ref: main
+  image_key_primary: observation.images.d405_stationary_r_0
+  image_key_left_wrist: observation.images.d405_stationary_l_1
+  image_key_right_wrist: observation.images.d405_stationary_l_2
+  action_dim: "12"
+  proprio_dim: "12"
+  num_actions_chunk: "25"
+  use_film: "True"
+  use_proprio: "True"
+  use_l1_regression: "True"
+  num_images_in_input: "3"
+  batch_size: "4"
+  learning_rate: "5e-4"
+  num_steps_before_decay: "50000"
+  max_steps: "100005"
+  save_freq: "10000"
+  lora_rank: "32"
+  image_aug: "True"
+  num_gpus: "2"
+  run_id_note: physical_ai_toolchain
+  blob_urls: '[]'
+  dataset_root: /workspace/data
+
+command: echo "Command will be set by submission script"
+
+environment_variables:
+  AZURE_AUTHORITY_HOST: https://login.microsoftonline.com
+  TRAINING_CHECKPOINT_OUTPUT: ${{outputs.checkpoints}}
+  BLOB_URLS: ${{inputs.blob_urls}}
+
+outputs:
+  checkpoints:
+    type: uri_folder
+    mode: upload

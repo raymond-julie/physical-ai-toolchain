@@ -45,3 +45,23 @@ spec:
       cpu: "8"
       memory: "32Gi"
       nvidia.com/gpu: 1
+---
+# A100 multi-GPU instance for OpenVLA-OFT fine-tuning (~73 GB VRAM/GPU recommended).
+# Requires a node pool with `node_labels = { "gpu-class" = "a100" }` on a VM size
+# such as Standard_NC48ads_A100_v4 (2x A100 80GB) or Standard_NC96ads_A100_v4 (4x).
+apiVersion: amlarc.azureml.com/v1alpha1
+kind: InstanceType
+metadata:
+  name: gpu-a100
+spec:
+  nodeSelector:
+    accelerator: nvidia
+    gpu-class: a100
+  resources:
+    requests:
+      cpu: "16"
+      memory: "128Gi"
+    limits:
+      cpu: "24"
+      memory: "220Gi"
+      nvidia.com/gpu: 2

@@ -85,6 +85,27 @@ node_pools = {
 //   }
 // }
 
+// A100 pool example for OpenVLA-OFT fine-tuning. Pairs with the `gpu-a100`
+// InstanceType in infrastructure/setup/manifests/azureml-instance-types.yaml,
+// which matches nodes carrying `gpu-class: a100`.
+//
+// node_pools = {
+//   a100gpu = {
+//     vm_size                 = "Standard_NC48ads_A100_v4" // 2x A100 80GB; NC96 = 4x
+//     subnet_address_prefixes = ["10.0.9.0/24"]
+//     node_taints             = ["nvidia.com/gpu:NoSchedule"]
+//     gpu_driver              = "Install"
+//     node_labels = {
+//       "gpu-class" = "a100"
+//     }
+//     priority                   = "Regular"
+//     should_enable_auto_scaling = true
+//     min_count                  = 0
+//     max_count                  = 1
+//     zones                      = []
+//   }
+// }
+
 // NAT Gateway Availability Zones
 // Set to ["1"] in AZ-supported regions (e.g. westus3, eastus2)
 // Leave empty for regions without AZ support (e.g. westus)
