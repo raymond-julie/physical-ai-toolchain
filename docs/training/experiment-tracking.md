@@ -52,7 +52,7 @@ Azure ML LeRobot submissions use MLflow automatically.
 | `--mlflow-token-retries` | `3`     | MLflow token refresh retry count  | `MLFLOW_TRACKING_TOKEN_REFRESH_RETRIES` |
 | `--mlflow-http-timeout`  | `60`    | MLflow HTTP request timeout (sec) | `MLFLOW_HTTP_REQUEST_TIMEOUT`           |
 
-##  Model Registration
+## Model Registration
 
 Training scripts register model checkpoints to Azure ML automatically at completion.
 

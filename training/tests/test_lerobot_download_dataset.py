@@ -481,17 +481,13 @@ class TestParseBlobUrl:
         assert prefix == "myprefix/data"
 
     def test_valid_url_without_prefix(self):
-        account, container, prefix = _MOD.parse_blob_url(
-            "https://myacct.blob.core.windows.net/mycontainer"
-        )
+        account, container, prefix = _MOD.parse_blob_url("https://myacct.blob.core.windows.net/mycontainer")
         assert account == "myacct"
         assert container == "mycontainer"
         assert prefix == ""
 
     def test_valid_url_single_level_prefix(self):
-        account, container, prefix = _MOD.parse_blob_url(
-            "https://acct.blob.core.windows.net/cont/p"
-        )
+        account, container, prefix = _MOD.parse_blob_url("https://acct.blob.core.windows.net/cont/p")
         assert account == "acct"
         assert container == "cont"
         assert prefix == "p"
@@ -509,7 +505,7 @@ class TestParseBlobUrl:
             _MOD.parse_blob_url("https://acct.blob.core.windows.net")
 
     def test_multipart_account_name(self):
-        account, container, prefix = _MOD.parse_blob_url(
+        account, _container, _prefix = _MOD.parse_blob_url(
             "https://my-account-name.blob.core.windows.net/container/prefix"
         )
         assert account == "my-account-name"
@@ -614,7 +610,9 @@ class TestMergeDatasets:
 
 class TestMultiBlobFlow:
     def test_multiple_blobs_triggers_merge(self, monkeypatch, tmp_path):
-        monkeypatch.setenv("BLOB_URLS", '["https://a.blob.core.windows.net/c1/p1", "https://b.blob.core.windows.net/c2/p2"]')
+        monkeypatch.setenv(
+            "BLOB_URLS", '["https://a.blob.core.windows.net/c1/p1", "https://b.blob.core.windows.net/c2/p2"]'
+        )
         monkeypatch.setenv("DATASET_REPO_ID", "merged")
         monkeypatch.setenv("DATASET_ROOT", str(tmp_path))
 

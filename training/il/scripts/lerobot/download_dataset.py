@@ -152,11 +152,16 @@ def merge_datasets(sources: list[Path], destination: Path) -> None:
 
     cmd = [
         "lerobot-edit-dataset",
-        "--new_repo_id", "merged",
-        "--operation.type", "merge",
-        "--operation.repo_ids", json.dumps(list(map(str, range(len(sources))))),
-        "--operation.roots", json.dumps([str(d.absolute()) for d in sources]),
-        "--new_root", str(destination),
+        "--new_repo_id",
+        "merged",
+        "--operation.type",
+        "merge",
+        "--operation.repo_ids",
+        json.dumps(list(map(str, range(len(sources))))),
+        "--operation.roots",
+        json.dumps([str(d.absolute()) for d in sources]),
+        "--new_root",
+        str(destination),
     ]
 
     print(f"Running: {shlex.join(cmd)}")
