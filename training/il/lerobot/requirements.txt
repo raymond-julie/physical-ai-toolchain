@@ -157,8 +157,9 @@ fsspec==2026.2.0
     #   torch
 gitdb==4.0.12
     # via gitpython
-gitpython==3.1.49
+gitpython==3.1.50
     # via
+    #   robotics-training-il (pyproject.toml)
     #   mlflow-skinny
     #   wandb
 google-auth==2.49.2
