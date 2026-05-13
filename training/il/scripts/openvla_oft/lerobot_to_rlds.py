@@ -50,6 +50,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
+import numpy as np
+
 _LOGGER = logging.getLogger(__name__)
 
 # ----- Constants matching OFT ALOHA preprocessing -----
@@ -76,7 +78,6 @@ def _load_manifest(manifest_path: Path) -> dict[str, Any]:
 def _decode_video(path: Path, target_size: int) -> Any:
     """Decode all frames from `path` and return a numpy array (T, H, W, 3) uint8."""
     import decord  # heavy optional dep, imported lazily
-    import numpy as np
 
     reader = decord.VideoReader(str(path), width=target_size, height=target_size)
     frames = reader.get_batch(range(len(reader))).asnumpy()
@@ -89,8 +90,6 @@ def _iter_episode_steps(
     cameras: CameraMapping,
 ) -> Iterator[dict[str, Any]]:
     """Yield one RLDS step dict per data row in the episode."""
-    import numpy as np
-
     data_rows = [
         json.loads(line) for line in (dataset_root / episode["data_path"]).read_text().splitlines() if line.strip()
     ]
@@ -164,17 +163,17 @@ def make_builder_class(
                                     {
                                         "image": tfds.features.Image(
                                             shape=(IMAGE_SIZE, IMAGE_SIZE, 3),
-                                            dtype=tfds.features.Image.np_dtype,
+                                            dtype=np.uint8,
                                             encoding_format="jpeg",
                                         ),
                                         "wrist_image_left": tfds.features.Image(
                                             shape=(IMAGE_SIZE, IMAGE_SIZE, 3),
-                                            dtype=tfds.features.Image.np_dtype,
+                                            dtype=np.uint8,
                                             encoding_format="jpeg",
                                         ),
                                         "wrist_image_right": tfds.features.Image(
                                             shape=(IMAGE_SIZE, IMAGE_SIZE, 3),
-                                            dtype=tfds.features.Image.np_dtype,
+                                            dtype=np.uint8,
                                             encoding_format="jpeg",
                                         ),
                                         "state": tfds.features.Tensor(shape=(STATE_DIM,), dtype="float32"),
