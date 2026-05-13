@@ -11,7 +11,9 @@ experiment_name: openvla-oft-training
 identity:
   type: managed_identity
 
-code: .
+# code is the `training/` directory (three levels up from this YAML). The entry
+# script creates a `training -> .` symlink so `python -m training.il...` resolves.
+code: ../../..
 environment: azureml:openvla-oft-training-env:latest
 compute: azureml:gpu-cluster
 

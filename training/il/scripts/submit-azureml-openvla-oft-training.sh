@@ -193,6 +193,7 @@ apply_profile() {
       [[ -z "${PROFILE_NUM_GPUS_SET:-}" ]]             && num_gpus=1
       [[ -z "${PROFILE_INSTANCE_TYPE_SET:-}" ]]        && instance_type=gpu
       [[ -z "${PROFILE_JOB_NAME_SET:-}" ]]             && job_name=openvla-oft-dryrun-a10
+      return 0
       ;;
     prod-a100|"")
       : # defaults already match the OFT+ ALOHA recipe targeting 2x A100 80GB
@@ -348,7 +349,7 @@ submit_args=(
   --set "inputs.lora_rank=$lora_rank"
   --set "inputs.image_aug=$image_aug"
   --set "inputs.num_gpus=$num_gpus"
-  --set "command=bash training/il/scripts/openvla_oft/azureml-train-entry.sh"
+  --set "command=bash il/scripts/openvla_oft/azureml-train-entry.sh"
   # Inputs flow to the entry script via env vars (the AzureML K8s extension does
   # not substitute \${{inputs.X}} placeholders inside `command:` for Download mounts).
   --set "environment_variables.DATASET_REPO_ID=$dataset_repo_id"
