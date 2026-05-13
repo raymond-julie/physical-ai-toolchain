@@ -70,9 +70,25 @@ WORKSPACE="${WORKSPACE:-/workspace}"
 OFT_DIR="${WORKSPACE}/openvla-oft"
 TRANSFORMERS_DIR="${WORKSPACE}/transformers-openvla-oft"
 RLDS_DIR="${WORKSPACE}/rlds"
+
+# Resolve the checkpoint output directory. The AzureML K8s extension does NOT
+# substitute ${{outputs.X}} placeholders in environment_variables (same bug as
+# inputs), so TRAINING_CHECKPOINT_OUTPUT arrives as the literal string
+# '${{outputs.checkpoints}}'. The data-capability sidecar mounts the upload
+# target at $AZUREML_CR_DATA_CAPABILITY_PATH/<output-name>, so we resolve to
+# that path. Anything still containing '${{' is treated as unsubstituted.
+_strip_placeholder() {
+  local v="${1:-}"
+  [[ "$v" == *'${{'* ]] && echo "" || echo "$v"
+}
+TRAINING_CHECKPOINT_OUTPUT="$(_strip_placeholder "${TRAINING_CHECKPOINT_OUTPUT:-}")"
+if [[ -z "${TRAINING_CHECKPOINT_OUTPUT}" ]] && [[ -n "${AZUREML_CR_DATA_CAPABILITY_PATH:-}" ]]; then
+  TRAINING_CHECKPOINT_OUTPUT="${AZUREML_CR_DATA_CAPABILITY_PATH}/checkpoints"
+fi
 RUN_ROOT_DIR="${TRAINING_CHECKPOINT_OUTPUT:-${WORKSPACE}/outputs/openvla-oft}"
 
 mkdir -p "${WORKSPACE}" "${RLDS_DIR}" "${RUN_ROOT_DIR}"
+echo "[output] checkpoints -> ${RUN_ROOT_DIR}"
 
 # Restore training/ prefix
 if [[ ! -e training ]]; then ln -s . training; fi
@@ -115,11 +131,8 @@ uv pip install decord tensorflow tensorflow_datasets
 #   environment_variables, so YAML values like DATASET_MOUNT and BLOB_URLS arrive
 #   as literal strings. We resolve the mount via the canonical AZURE_ML_INPUT_*
 #   env var that the data-capability sidecar exports (mount path of inputs.dataset_asset),
-#   and treat any value still containing "${{" as unsubstituted/empty.
-_strip_placeholder() {
-  local v="${1:-}"
-  [[ "$v" == *'${{'* ]] && echo "" || echo "$v"
-}
+#   and reuse _strip_placeholder (defined above) to treat any value still containing
+#   "${{" as unsubstituted/empty.
 DATASET_MOUNT="$(_strip_placeholder "${DATASET_MOUNT:-}")"
 BLOB_URLS="$(_strip_placeholder "${BLOB_URLS:-}")"
 : "${DATASET_MOUNT:=${AZURE_ML_INPUT_dataset_asset:-}}"
