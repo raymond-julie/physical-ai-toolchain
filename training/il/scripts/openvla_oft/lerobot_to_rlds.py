@@ -148,8 +148,13 @@ def make_builder_class(
     import tensorflow_datasets as tfds
 
     manifest = _load_manifest(manifest_path)
+    dataset_name = name
 
     class SchaefflerBimanualBuilder(tfds.core.GeneratorBasedBuilder):
+        # TFDS derives the dataset directory from cls.name (defaulting to
+        # camel→snake of __name__). Set explicitly so the on-disk layout is
+        # /<data_dir>/<name>/<version>/ and matches what OFT looks up.
+        name = dataset_name
         VERSION = tfds.core.Version("1.0.0")
         RELEASE_NOTES = {"1.0.0": "Initial release from LeRobot v3 manifest."}
 
