@@ -1,6 +1,6 @@
 [project]
 name = "physical-ai-toolchain"
-version = "0.7.4"
+version = "0.8.0"
 description = "Physical AI Toolchain for Isaac Lab training"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -14,7 +14,7 @@ packages = ["training/rl"]
 
 [dependency-groups]
 dev = [
-    "hypothesis==6.152.4",
+    "hypothesis==6.152.5",
     "numpy==2.4.4",
     "ruff==0.15.12",
     "pytest==9.0.3",
