@@ -54,7 +54,8 @@ class DatasetSpec:
     chunks_size: int
     video_keys: tuple[str, ...]
     data_path: str
-    video_path: str
+    video_path: str | None
+    per_view_video_paths: dict[str, str]
 
 
 def load_dataset_spec(root: Path) -> DatasetSpec:
@@ -64,6 +65,11 @@ def load_dataset_spec(root: Path) -> DatasetSpec:
     video_keys = tuple(k for k, v in features.items() if v.get("dtype") == "video")
     if not video_keys:
         raise ValueError(f"No video features found in {info_path}")
+    per_view_paths = {
+        k: str(features[k]["videos_path"])
+        for k in video_keys
+        if isinstance(features[k].get("videos_path"), str)
+    }
     return DatasetSpec(
         root=root,
         codebase_version=str(info.get("codebase_version", "v2.1")),
@@ -72,7 +78,8 @@ def load_dataset_spec(root: Path) -> DatasetSpec:
         chunks_size=int(info.get("chunks_size", 1000)),
         video_keys=video_keys,
         data_path=str(info["data_path"]),
-        video_path=str(info["video_path"]),
+        video_path=str(info["video_path"]) if "video_path" in info else None,
+        per_view_video_paths=per_view_paths,
     )
 
 
@@ -93,7 +100,14 @@ def iter_episodes(
     selected_views = _resolve_views(spec, views)
 
     if spec.codebase_version.startswith("v3"):
-        records = _iter_v3(spec, selected_views)
+        # Some v3 datasets store metadata as parquet (chunk-packed videos), while
+        # others use jsonl with one-mp4-per-episode layout. Detect by metadata
+        # file presence.
+        parquet_meta = sorted((spec.root / "meta" / "episodes").rglob("file-*.parquet"))
+        if parquet_meta:
+            records = _iter_v3(spec, selected_views)
+        else:
+            records = _iter_v3_jsonl(spec, selected_views)
     else:
         records = _iter_v21(spec, selected_views)
 
@@ -222,6 +236,76 @@ def _iter_v3(spec: DatasetSpec, views: tuple[str, ...]) -> Iterator[EpisodeRecor
                 from_timestamp=from_ts,
                 to_timestamp=to_ts,
             )
+
+
+# -------------------------------------------------------------------------
+# LeRobot v3.0 — jsonl metadata + one MP4 per episode (e.g. schaeffler_sim_avc1)
+# -------------------------------------------------------------------------
+
+
+def _iter_v3_jsonl(spec: DatasetSpec, views: tuple[str, ...]) -> Iterator[EpisodeRecord]:
+    ep_meta_dir = spec.root / "meta" / "episodes"
+    ep_files = sorted(ep_meta_dir.rglob("episode_*.jsonl"))
+    if not ep_files:
+        flat = spec.root / "meta" / "episodes.jsonl"
+        ep_files = [flat] if flat.exists() else []
+    if not ep_files:
+        raise FileNotFoundError(
+            f"No jsonl v3 episode metadata found under {ep_meta_dir}",
+        )
+
+    tasks_by_index = _load_tasks_jsonl(spec.root / "meta" / "tasks.jsonl")
+
+    for ep_file in ep_files:
+        with ep_file.open() as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                payload = _normalize_tasks_field(json.loads(line))
+                ep_idx = int(payload["episode_index"])
+                length = int(payload.get("length", 0))
+                instruction = _resolve_instruction_v21(payload, tasks_by_index)
+                video_paths: dict[str, Path] = {}
+                missing_views: list[str] = []
+                for view in views:
+                    template = spec.per_view_video_paths.get(view)
+                    if not template:
+                        raise KeyError(
+                            f"No videos_path template for view {view!r} in info.json features",
+                        )
+                    candidate = spec.root / template.format(episode_index=ep_idx)
+                    if not candidate.exists():
+                        missing_views.append(view)
+                    video_paths[view] = candidate
+                if missing_views:
+                    _LOGGER.warning(
+                        "episode %d skipped: missing videos for views=%s",
+                        ep_idx,
+                        missing_views,
+                    )
+                    continue
+                yield EpisodeRecord(
+                    episode_id=f"{spec.root.name}/episode_{ep_idx:06d}",
+                    episode_index=ep_idx,
+                    instruction=instruction,
+                    fps=spec.fps,
+                    length=length,
+                    video_paths=video_paths,
+                    from_timestamp=None,
+                    to_timestamp=None,
+                )
+
+
+def _normalize_tasks_field(payload: dict[str, Any]) -> dict[str, Any]:
+    """Parse ``tasks`` when stored as a JSON-encoded string (schaeffler_sim_avc1)."""
+    tasks_field = payload.get("tasks")
+    if isinstance(tasks_field, str) and tasks_field.startswith("["):
+        try:
+            return {**payload, "tasks": json.loads(tasks_field)}
+        except json.JSONDecodeError:
+            pass
+    return payload
 
 
 def _resolve_instruction_v3(
