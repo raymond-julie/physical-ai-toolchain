@@ -90,6 +90,13 @@ RUN_ROOT_DIR="${TRAINING_CHECKPOINT_OUTPUT:-${WORKSPACE}/outputs/openvla-oft}"
 mkdir -p "${WORKSPACE}" "${RLDS_DIR}" "${RUN_ROOT_DIR}"
 echo "[output] checkpoints -> ${RUN_ROOT_DIR}"
 
+# AzureML uploads `training/` as the code asset, mounting it at the job's
+# initial cwd. Capture that path before any `cd` so the wrapper invocation
+# (and the mlflow_shim it resolves alongside) can find the snapshot
+# regardless of cwd.
+CODE_DIR="$(pwd)"
+export PYTHONPATH="${CODE_DIR}:${PYTHONPATH:-}"
+
 # Restore training/ prefix
 if [[ ! -e training ]]; then ln -s . training; fi
 
@@ -123,6 +130,19 @@ uv pip install "flash-attn==2.5.5" --no-build-isolation || \
 
 # decord for video decoding inside the LeRobot->RLDS converter
 uv pip install decord tensorflow tensorflow_datasets
+
+# MLflow stack for AzureML metric logging via training/il/scripts/openvla_oft/train.py.
+# Upstream OFT (vla-scripts/finetune.py) hardcodes the W&B SDK as its only
+# telemetry sink. We do not have a CLI flag to swap it for MLflow; instead the
+# wrapper shadows `import wandb` with training/il/scripts/mlflow_shim/wandb/,
+# turning every wandb.log call into mlflow.log_metrics.
+echo "[pip] installing mlflow + azure-ml deps"
+uv pip install --quiet \
+  mlflow-skinny==3.9.0 \
+  azureml-mlflow==1.62.0.post2 \
+  azure-ai-ml \
+  azure-identity \
+  psutil pynvml
 
 # ---- 4. Resolve dataset source ----
 #   Priority: pre-mounted AzureML data asset > BLOB_URLS download > raw DATASET_ROOT.
@@ -182,11 +202,17 @@ python -m training.il.scripts.openvla_oft.dataset_registration \
 # ---- 6. Train ----
 cd "${OFT_DIR}"
 
-# Disable WandB; metrics flow through MLflow via AzureML autologging.
+# Metrics route through Azure ML MLflow via training/il/scripts/openvla_oft/train.py.
+# The wrapper prepends training/il/scripts/mlflow_shim/ to PYTHONPATH so the
+# subprocess's `import wandb` resolves to our MLflow forwarder; OFT's
+# vla-scripts/finetune.py is upstream-locked to W&B, this is the only way to
+# capture its metrics without forking. WANDB_MODE/WANDB_DISABLED gate the real
+# W&B client (transitive dep) as defense-in-depth.
 export WANDB_MODE=disabled
 export WANDB_DISABLED=true
 
 train_cmd=(
+  python -m training.il.scripts.openvla_oft.train
   torchrun --standalone --nnodes 1 --nproc-per-node "${NUM_GPUS}"
   vla-scripts/finetune.py
   --vla_path "${VLA_PATH}"

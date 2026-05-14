@@ -7,13 +7,17 @@
 		"TODO"
 	],
 	"words": [
+		"accum",
 		"envaccount",
 		"envcontainer",
+		"libaio",
+		"libegl",
 		"myacct",
 		"mycontainer",
 		"noseparator",
 		"preds",
 		"refetches",
+		"reflink",
 		"unstub",
 		"uppercased",
 		"xticklabels"

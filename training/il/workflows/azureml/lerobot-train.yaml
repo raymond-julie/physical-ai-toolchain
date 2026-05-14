@@ -65,4 +65,6 @@ environment_variables:
 outputs:
   checkpoints:
     type: uri_folder
-    mode: upload
+    # rw_mount streams checkpoints to blob storage as they are written, so a
+    # spot eviction does not lose progress. `upload` only flushes at job end.
+    mode: rw_mount

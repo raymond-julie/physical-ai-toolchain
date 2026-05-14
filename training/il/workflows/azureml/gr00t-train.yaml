@@ -1,48 +1,46 @@
-# OpenVLA-OFT Fine-Tuning Job Template
+# GR00T N1.7 Fine-Tuning Job Template
 #
-# Structural template used by submit-azureml-openvla-oft-training.sh. Values
-# below are placeholders and will be overridden at submission time.
+# Structural template used by submit-azureml-gr00t-training.sh. Values below
+# are placeholders and will be overridden at submission time via --set.
 
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
 type: command
-display_name: OpenVLA-OFT Fine-Tuning
-description: Fine-tune OpenVLA with the OFT recipe on a LeRobot v3 dataset (3 imgs + proprio + FiLM + L1 + LoRA).
-experiment_name: openvla-oft-training
+display_name: GR00T N1.7 Fine-Tuning
+description: Fine-tune NVIDIA Isaac-GR00T N1.7 on a LeRobot v3 dataset (converted to v2.1 in-job).
+experiment_name: gr00t-training
 identity:
   type: managed_identity
 
 # code is the `training/` directory (three levels up from this YAML). The entry
 # script creates a `training -> .` symlink so `python -m training.il...` resolves.
 code: ../../..
-environment: azureml:openvla-oft-training-env:latest
+environment: azureml:gr00t-training-env:latest
 compute: azureml:gpu-cluster
 
 inputs:
-  dataset_repo_id: placeholder
+  gr00t_ref: main
+  base_model_path: nvidia/GR00T-N1.7-3B
   dataset_name: schaeffler_bimanual
-  vla_path: openvla/openvla-7b
-  openvla_oft_ref: main
-  transformers_fork_ref: main
   image_key_primary: observation.images.d405_stationary_r_0
   image_key_left_wrist: observation.images.d405_stationary_l_1
   image_key_right_wrist: observation.images.d405_stationary_l_2
-  action_dim: "12"
-  proprio_dim: "12"
-  num_actions_chunk: "25"
-  use_film: "True"
-  use_proprio: "True"
-  use_l1_regression: "True"
-  num_images_in_input: "3"
-  batch_size: "4"
-  learning_rate: "5e-4"
-  num_steps_before_decay: "50000"
-  max_steps: "100005"
-  save_freq: "10000"
-  lora_rank: "32"
-  image_aug: "True"
-  num_gpus: "2"
-  run_id_note: physical_ai_toolchain
-  blob_urls: '[]'
+  state_slices: "left_arm=0:6,right_arm=6:12,left_gripper=12:13,right_gripper=13:14"
+  action_slices: "left_arm=0:6,right_arm=6:12,left_gripper=12:13,right_gripper=13:14"
+  annotation_mapping: "human.task_description=task_index"
+  global_batch_size: "32"
+  gradient_accumulation_steps: "1"
+  learning_rate: "1e-4"
+  max_steps: "20000"
+  save_steps: "2000"
+  save_total_limit: "3"
+  save_only_model: "True"
+  skip_weight_loading: "False"
+  num_gpus: "1"
+  dataloader_num_workers: "4"
+  tune_projector: "True"
+  tune_diffusion_model: "True"
+  tune_llm: "False"
+  tune_visual: "False"
   dataset_root: /workspace/data
   # The submit script appends a `dataset_asset` input (type uri_folder) when
   # --dataset-asset NAME:VERSION is provided, mounting the registered data
@@ -53,7 +51,8 @@ command: echo "Command will be set by submission script"
 environment_variables:
   AZURE_AUTHORITY_HOST: https://login.microsoftonline.com
   TRAINING_CHECKPOINT_OUTPUT: ${{outputs.checkpoints}}
-  BLOB_URLS: ${{inputs.blob_urls}}
+  # HF_TOKEN is injected at submission time via --set environment_variables.HF_TOKEN
+  # so the gated nvidia/Cosmos-Reason2-2B backbone can be fetched at runtime.
 
 outputs:
   checkpoints:

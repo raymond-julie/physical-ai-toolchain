@@ -254,7 +254,7 @@ def _resolve_layout(info: dict[str, Any], frames: pd.DataFrame) -> tuple[int, in
     names = action_feat.get("names") or []
     if not names:
         sample = frames["action"].iloc[0]
-        return (int(len(sample)), None)
+        return (len(sample), None)
     gripper_idx = next(
         (i for i, n in enumerate(names) if "gripper" in str(n).lower()),
         None,

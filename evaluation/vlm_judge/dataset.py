@@ -66,9 +66,7 @@ def load_dataset_spec(root: Path) -> DatasetSpec:
     if not video_keys:
         raise ValueError(f"No video features found in {info_path}")
     per_view_paths = {
-        k: str(features[k]["videos_path"])
-        for k in video_keys
-        if isinstance(features[k].get("videos_path"), str)
+        k: str(features[k]["videos_path"]) for k in video_keys if isinstance(features[k].get("videos_path"), str)
     }
     return DatasetSpec(
         root=root,

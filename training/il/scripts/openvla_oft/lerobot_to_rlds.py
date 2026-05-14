@@ -46,9 +46,10 @@ import json
 import logging
 import os
 import sys
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import numpy as np
 
@@ -205,7 +206,7 @@ def make_builder_class(
                 supervised_keys=None,
             )
 
-        def _split_generators(self, dl_manager):  # noqa: ARG002 (TFDS API)
+        def _split_generators(self, dl_manager):
             episodes = manifest["episodes"]
             split_idx = max(1, int(len(episodes) * (1.0 - val_fraction)))
             return {
@@ -216,14 +217,17 @@ def make_builder_class(
         def _generate_examples(self, episodes: list[dict[str, Any]]):
             for episode in episodes:
                 steps = list(_iter_episode_steps(dataset_root, episode, cameras))
-                yield episode["episode_index"], {
-                    "steps": steps,
-                    "episode_metadata": {
-                        "episode_index": int(episode["episode_index"]),
-                        "length": int(episode["length"]),
-                        "success": bool(episode.get("success", True)),
+                yield (
+                    episode["episode_index"],
+                    {
+                        "steps": steps,
+                        "episode_metadata": {
+                            "episode_index": int(episode["episode_index"]),
+                            "length": int(episode["length"]),
+                            "success": bool(episode.get("success", True)),
+                        },
                     },
-                }
+                )
 
     SchaefflerBimanualBuilder.__name__ = name
     return SchaefflerBimanualBuilder
@@ -241,7 +245,11 @@ def _dry_run(manifest_path: Path, cameras: CameraMapping, dataset_root: Path) ->
         sample["length"],
         sample["language_instruction"],
     )
-    for label, key in (("primary", cameras.primary), ("left_wrist", cameras.left_wrist), ("right_wrist", cameras.right_wrist)):
+    for label, key in (
+        ("primary", cameras.primary),
+        ("left_wrist", cameras.left_wrist),
+        ("right_wrist", cameras.right_wrist),
+    ):
         rel = sample["video_paths"].get(key)
         if rel is None:
             _LOGGER.error("Sample episode is missing video for %s (%s)", label, key)
