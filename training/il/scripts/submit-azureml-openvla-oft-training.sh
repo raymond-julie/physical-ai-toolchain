@@ -402,13 +402,17 @@ fi
 # Mount a prior OFT checkpoint as `resume_checkpoint` input and override VLA_PATH
 # so the entry script loads the checkpoint instead of the public openvla/openvla-7b.
 # Accepts a bare azureml:// URI or an `azureml:NAME:VERSION` data-asset reference.
+#
+# mode=download (not ro_mount): OFT's update_auto_map() writes config.json.back.*
+# files into the checkpoint dir, which fails on a read-only blobfuse mount.
+# `download` snapshots the folder to a writable local path before training.
 if [[ -n "$resume_from" ]]; then
   if [[ "$resume_from" != azureml:* && "$resume_from" != azureml://* ]]; then
     resume_from="azureml:$resume_from"
   fi
   submit_args+=(
     --set "inputs.resume_checkpoint.type=uri_folder"
-    --set "inputs.resume_checkpoint.mode=ro_mount"
+    --set "inputs.resume_checkpoint.mode=download"
     --set "inputs.resume_checkpoint.path=$resume_from"
     --set 'environment_variables.RESUME_CHECKPOINT=${{inputs.resume_checkpoint}}'
   )
