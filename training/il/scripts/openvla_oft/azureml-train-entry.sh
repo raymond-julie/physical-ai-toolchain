@@ -90,6 +90,31 @@ RUN_ROOT_DIR="${TRAINING_CHECKPOINT_OUTPUT:-${WORKSPACE}/outputs/openvla-oft}"
 mkdir -p "${WORKSPACE}" "${RLDS_DIR}" "${RUN_ROOT_DIR}"
 echo "[output] checkpoints -> ${RUN_ROOT_DIR}"
 
+# Resume from a previously streamed OFT checkpoint. ${RESUME_CHECKPOINT} arrives
+# as a uri_folder mount path (set by --resume-from in the submission script).
+# OFT's vla-scripts/finetune.py loads its base model from --vla_path; pointing
+# that at our prior checkpoint dir is the upstream-supported resume mechanism.
+# The training step counter resets because OFT names checkpoints by step and
+# treats the loaded model as the new "base"; we keep the original max_steps so
+# wall-clock-equivalent training continues from the loaded weights.
+RESUME_CHECKPOINT="$(_strip_placeholder "${RESUME_CHECKPOINT:-}")"
+if [[ -n "${RESUME_CHECKPOINT}" && -d "${RESUME_CHECKPOINT}" ]]; then
+  if [[ -f "${RESUME_CHECKPOINT}/config.json" ]] || \
+     [[ -f "${RESUME_CHECKPOINT}/model.safetensors.index.json" ]]; then
+    echo "[resume] overriding VLA_PATH -> ${RESUME_CHECKPOINT}"
+    VLA_PATH="${RESUME_CHECKPOINT}"
+  else
+    # User pointed at a parent folder; find the highest-step *_chkpt child.
+    latest_chkpt="$(find "${RESUME_CHECKPOINT}" -maxdepth 1 -type d -name '*_chkpt' | sort -V | tail -1)"
+    if [[ -n "${latest_chkpt}" ]] && [[ -f "${latest_chkpt}/config.json" ]]; then
+      echo "[resume] selected latest checkpoint: ${latest_chkpt}"
+      VLA_PATH="${latest_chkpt}"
+    else
+      echo "[resume] WARNING: RESUME_CHECKPOINT=${RESUME_CHECKPOINT} has no usable checkpoint; falling back to ${VLA_PATH}"
+    fi
+  fi
+fi
+
 # AzureML uploads `training/` as the code asset, mounting it at the job's
 # initial cwd. Capture that path before any `cd` so the wrapper invocation
 # (and the mlflow_shim it resolves alongside) can find the snapshot

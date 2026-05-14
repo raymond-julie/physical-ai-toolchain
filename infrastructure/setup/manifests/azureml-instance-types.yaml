@@ -39,11 +39,11 @@ spec:
     accelerator: nvidia
   resources:
     requests:
-      cpu: "4"
-      memory: "16Gi"
-    limits:
       cpu: "8"
-      memory: "32Gi"
+      memory: "64Gi"
+    limits:
+      cpu: "12"
+      memory: "128Gi"
       nvidia.com/gpu: 1
 ---
 # A100 multi-GPU instance for OpenVLA-OFT fine-tuning (~73 GB VRAM/GPU recommended).

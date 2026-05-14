@@ -37,6 +37,9 @@ DATA SOURCE:
                                  read-only at $DATASET_MOUNT; takes precedence over --blob-url.
         --dataset-root DIR       Container mount path (default: /workspace/data)
         --dataset-name NAME      RLDS dataset name (default: schaeffler_bimanual)
+        --resume-from URI        Prior checkpoint folder (AzureML uri_folder URI or
+                                 azureml:NAME:VERSION). Overrides --vla-path so OFT
+                                 picks up training from the streamed checkpoint.
 
 PROFILES:
         --profile NAME           Apply preset (overrides individual flags below where unset):
@@ -171,6 +174,7 @@ save_as=""
 config_preview=false
 forward_args=()
 dataset_asset="${DATASET_ASSET:-}"
+resume_from=""
 profile=""
 
 # --- Profiles (applied lazily after parse) ---
@@ -215,6 +219,7 @@ while [[ $# -gt 0 ]]; do
     -d|--dataset-repo-id)       dataset_repo_id="$2"; shift 2 ;;
     --dataset-name)             dataset_name="$2"; shift 2 ;;
     --dataset-asset)            dataset_asset="$2"; shift 2 ;;
+    --resume-from)              resume_from="$2"; shift 2 ;;
     --blob-url)                 blob_urls+=("$2"); shift 2 ;;
     --dataset-root)             dataset_root="$2"; shift 2 ;;
     -j|--job-name)              job_name="$2"; PROFILE_JOB_NAME_SET=1; shift 2 ;;
@@ -284,6 +289,7 @@ if [[ "$config_preview" == "true" ]]; then
   print_kv "Dataset repo id" "$dataset_repo_id"
   print_kv "Dataset name (RLDS)" "$dataset_name"
   print_kv "Dataset asset" "${dataset_asset:-<none>}"
+  print_kv "Resume from" "${resume_from:-<none>}"
   print_kv "Blob URLs" "${blob_urls[*]:-<none>}"
   print_kv "Profile" "${profile:-<none>}"
   print_kv "VLA path" "$vla_path"
@@ -393,6 +399,21 @@ if [[ -n "$dataset_asset" ]]; then
   )
 fi
 
+# Mount a prior OFT checkpoint as `resume_checkpoint` input and override VLA_PATH
+# so the entry script loads the checkpoint instead of the public openvla/openvla-7b.
+# Accepts a bare azureml:// URI or an `azureml:NAME:VERSION` data-asset reference.
+if [[ -n "$resume_from" ]]; then
+  if [[ "$resume_from" != azureml:* && "$resume_from" != azureml://* ]]; then
+    resume_from="azureml:$resume_from"
+  fi
+  submit_args+=(
+    --set "inputs.resume_checkpoint.type=uri_folder"
+    --set "inputs.resume_checkpoint.mode=ro_mount"
+    --set "inputs.resume_checkpoint.path=$resume_from"
+    --set 'environment_variables.RESUME_CHECKPOINT=${{inputs.resume_checkpoint}}'
+  )
+fi
+
 [[ "$stream_logs" == "true" ]] && submit_args+=(--stream)
 [[ -n "$save_as" ]] && submit_args+=(--save-as "$save_as")
 
@@ -406,3 +427,4 @@ print_kv "Compute" "$compute"
 print_kv "Instance type" "$instance_type"
 print_kv "Environment" "${environment_name}:${environment_version}"
 print_kv "Dataset" "$dataset_repo_id (-> $dataset_name)"
+print_kv "Resume from" "${resume_from:-<none>}"
