@@ -186,10 +186,11 @@ def run_training(cmd: list[str]) -> int:
     shim = _shim_path()
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = shim + (os.pathsep + existing if existing else "")
-    # Even with the shim in place, prevent the real wandb client (if installed
-    # in the venv as a transitive dep) from doing any network I/O.
-    env.setdefault("WANDB_MODE", "disabled")
-    env.setdefault("WANDB_DISABLED", "true")
+    # NOTE: Do NOT set WANDB_DISABLED / WANDB_MODE. HF Trainer's integration_utils
+    # rejects ``report_to='wandb'`` + WANDB_DISABLED at Trainer construction,
+    # before any wandb import happens, so the shim never gets to attach. The
+    # PYTHONPATH shadow alone is the gate: ``import wandb`` resolves to our
+    # MLflow forwarder, never the real client.
     print(f"[mlflow] shim mounted at {shim} (intercepts upstream wandb calls)")
 
     print(f"[mlflow] launching: {' '.join(cmd)}")

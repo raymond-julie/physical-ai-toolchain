@@ -99,6 +99,11 @@ class _Stub:
         return _Stub()
 
 
+# wandb-API kwargs that callers pass to ``config.update`` but that are not
+# user-meaningful parameters (they configure wandb's own behavior).
+_WANDB_CONFIG_RESERVED_KWARGS = frozenset({"allow_val_change", "exclude", "include"})
+
+
 class _Config(dict):
     """wandb.config replacement that logs every set value as an mlflow param."""
 
@@ -106,7 +111,12 @@ class _Config(dict):
         merged: dict[str, Any] = {}
         if args and isinstance(args[0], dict):
             merged.update(args[0])
-        merged.update(kwargs)
+        # Drop wandb-reserved kwargs (e.g. ``allow_val_change=True``) so they
+        # don't leak into MLflow params.
+        for key, value in kwargs.items():
+            if key in _WANDB_CONFIG_RESERVED_KWARGS:
+                continue
+            merged[key] = value
         super().update(merged)
         _ensure_run()
         _log_params(merged)
@@ -144,6 +154,14 @@ class _Run:
 
     def log_code(self, *args: Any, **kwargs: Any) -> None:
         return
+
+    def _label(self, *args: Any, **kwargs: Any) -> None:
+        """HF Trainer calls ``run._label(code="transformers_trainer")``."""
+        return
+
+    def log_artifact(self, *args: Any, **kwargs: Any) -> Any:
+        """Stubbed wandb.run.log_artifact; MLflow handles artifacts separately."""
+        return _Stub()
 
 
 config: _Config = _Config()
@@ -217,6 +235,24 @@ def login(*args: Any, **kwargs: Any) -> bool:
 
 def setup(*args: Any, **kwargs: Any) -> None:
     return
+
+
+def termwarn(*args: Any, **kwargs: Any) -> None:
+    """HF Trainer calls ``wandb.termwarn(...)`` for user-facing warnings."""
+    return
+
+
+def termlog(*args: Any, **kwargs: Any) -> None:
+    return
+
+
+def termerror(*args: Any, **kwargs: Any) -> None:
+    return
+
+
+def log_artifact(*args: Any, **kwargs: Any) -> Any:
+    """Top-level ``wandb.log_artifact``; routed through the shim, no-op."""
+    return _Stub()
 
 
 Image = _Stub
