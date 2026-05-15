@@ -36,7 +36,10 @@ metadata:
   name: gpu
 spec:
   nodeSelector:
-    accelerator: nvidia
+    # `agentpool: gpu` pins to the A10 spot pool. Plain `accelerator: nvidia`
+    # also matches the A100 node, which let OFT race GR00T for the single A100
+    # GPU and lose (job failed instantly).
+    agentpool: gpu
   resources:
     requests:
       cpu: "8"
