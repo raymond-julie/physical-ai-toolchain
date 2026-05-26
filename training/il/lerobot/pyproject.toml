@@ -6,13 +6,13 @@ requires-python = ">=3.12"
 dependencies = [
     "numpy==2.4.6",
     "azure-core==1.41.0",
-    "azure-storage-blob==12.29.0",
+    "azure-storage-blob==12.27.1",
     "azure-identity==1.25.3",
     "azure-ai-ml==1.33.0",
     "azureml-mlflow==1.62.0.post2",
-    "marshmallow==4.3.0",
-    "mlflow-skinny==3.12.0",
-    "packaging==26.2",
+    "marshmallow==3.26.2",
+    "mlflow-skinny==3.9.0",
+    "packaging==25.0",
     "psutil==7.2.2",
     "pynvml==13.0.1",
     "pyperclip==1.11.0",
@@ -20,6 +20,7 @@ dependencies = [
     "pyarrow==24.0.0",
     "huggingface-hub==1.16.1",
     "lerobot==0.5.1",
+    "torch>=2.11.0,<2.12.0",
     "torchcodec==0.13.0; platform_machine == 'x86_64' or platform_machine == 'AMD64'",
     # Pin gitpython to address GHSA-mv93-w799-cj2w (transitive via mlflow-skinny and wandb).
     "gitpython==3.1.50",
@@ -35,5 +36,8 @@ build-backend = "hatchling.build"
 override-dependencies = [
     # Override lerobot's vulnerable diffusers transitive range for GHSA-98h9-4798-4q5v.
     "diffusers==0.38.0",
+    "starlette==1.0.1",
+    # Override lerobot 0.5.1's torch<2.11.0 cap to remediate PYSEC-2026-139; lerobot main already allows <2.12.0.
+    "torch>=2.11.0,<2.12.0",
 ]
 package = false

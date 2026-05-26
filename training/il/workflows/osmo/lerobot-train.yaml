@@ -136,7 +136,8 @@ workflow:
             fi
 
 default-values:
-  image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime
+  # Base image pinned to torch 2.11.0 to remediate PYSEC-2026-139; lerobot 0.5.1's torch<2.11.0 cap is overridden via [tool.uv].override-dependencies in training/il/lerobot/pyproject.toml.
+  image: pytorch/pytorch:2.11.0-cuda12.6-cudnn9-runtime
   encoded_archive: ""
   payload_root: /workspace/lerobot_payload
   dataset_repo_id: ""
