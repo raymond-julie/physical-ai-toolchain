@@ -1,0 +1,14 @@
+# OSV-Scanner suppression policy — single source of truth.
+#
+# All vulnerability suppressions live in this file (decisions DD-01 / Q1 / Q2 / Q9 in
+# .copilot-tracking/research/2026-05-23/osv-scanner-and-lerobot-torch-research.md).
+# Do NOT add `--ignore` flags to npm scripts, setup-dev scripts, or CI workflows;
+# every workflow and CLI invocation reads this file via `--config osv-scanner.toml`.
+#
+# Each entry under [[IgnoredVulns]] MUST include both `reason` and `ignoreUntil`.
+# Uncomment and populate the template below to add a new suppression.
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = "2026-12-31"
+# reason = "Upstream fix pending in <package> v<X.Y.Z>; tracked in <issue-link>."
