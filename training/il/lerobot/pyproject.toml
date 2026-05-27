@@ -20,7 +20,7 @@ dependencies = [
     "pyarrow==24.0.0",
     "huggingface-hub==1.16.1",
     "lerobot==0.5.1",
-    "torch>=2.11.0,<2.12.0",
+    "torch==2.11.0",
     "torchcodec==0.13.0; platform_machine == 'x86_64' or platform_machine == 'AMD64'",
     # Pin gitpython to address GHSA-mv93-w799-cj2w (transitive via mlflow-skinny and wandb).
     "gitpython==3.1.50",
