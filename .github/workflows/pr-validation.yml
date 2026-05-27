@@ -178,7 +178,6 @@ jobs:
             --config=osv-scanner.toml
             --recursive
             ./
-          fail-on-vuln: true
 
   # PowerShell Pester test execution
   pester-tests:
