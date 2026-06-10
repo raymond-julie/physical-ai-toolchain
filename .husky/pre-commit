@@ -1,1 +1,14 @@
-cd data-management/viewer/frontend && npx lint-staged
+frontend_dir="data-management/viewer/frontend"
+
+# Only run frontend lint-staged when staged files live under the frontend.
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -q "^$frontend_dir/"; then
+  exit 0
+fi
+
+# Skip gracefully when frontend dependencies are not installed.
+if [ ! -x "$frontend_dir/node_modules/.bin/lint-staged" ]; then
+  echo "husky - skipping lint-staged: run 'npm ci' in $frontend_dir to enable pre-commit checks"
+  exit 0
+fi
+
+cd "$frontend_dir" && npx lint-staged
