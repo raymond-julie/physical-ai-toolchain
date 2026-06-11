@@ -26,6 +26,9 @@ This folder currently supports the following workflows directly mapped from
 ### Prerequisit
 
 1. A OSMO 6.3 cluster on Azure with enough GPU to run the target workflow.
+2. Install relevant skills from [Nvidia Skills gallery](https://github.com/NVIDIA/skills)
+ to the `skills` folder under the current folder `synthetic-data`.
+ The relevant skills are prefixed with `physical-ai-`.
 
 ### Sample prompts to get oriented
 
