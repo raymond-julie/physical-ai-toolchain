@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy OSMO Control Plane components (service, router, web-ui)
+# Deploy OSMO Control Plane via the consolidated service chart (service + router + UI)
 set -o errexit -o nounset
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -139,15 +139,10 @@ fi
 #------------------------------------------------------------------------------
 
 service_values="$VALUES_DIR/osmo-control-plane.yaml"
-router_values="$VALUES_DIR/osmo-router.yaml"
-ui_values="$VALUES_DIR/osmo-ui.yaml"
 service_identity_values="$VALUES_DIR/osmo-control-plane-identity.yaml"
-router_identity_values="$VALUES_DIR/osmo-router-identity.yaml"
 service_config_template="$CONFIG_DIR/service-config.template.json"
 
-for f in "$service_values" "$router_values" "$ui_values"; do
-  [[ -f "$f" ]] || fatal "Values file not found: $f"
-done
+[[ -f "$service_values" ]] || fatal "Values file not found: $service_values"
 
 mkdir -p "$CONFIG_DIR/out"
 
@@ -248,6 +243,11 @@ fi
 ingress_manifest="$SCRIPT_DIR/manifests/internal-lb-ingress.yaml"
 [[ -f "$ingress_manifest" ]] && kubectl apply -f "$ingress_manifest"
 
+# Apply the API Ingress (replaces the per-service ingress the chart rendered in 6.2;
+# 6.3 only renders ingress under the gateway tier, which this deploy disables).
+api_ingress_manifest="$SCRIPT_DIR/manifests/osmo-control-plane-ingress.yaml"
+[[ -f "$api_ingress_manifest" ]] && kubectl apply -n "$NS_OSMO_CONTROL_PLANE" -f "$api_ingress_manifest"
+
 #------------------------------------------------------------------------------
 # Read Admin Password from Key Vault
 #------------------------------------------------------------------------------
@@ -302,17 +302,30 @@ fi
 section "Deploy OSMO Charts"
 
 # Build common helm args
+# Disable the gateway tier (Envoy/oauth2Proxy/authz) — 6.3 defaults it on with a
+# public LoadBalancer NLB. We keep the AzureML internal-LB nginx ingress plus
+# Tier-2 defaultAdmin token auth instead, so no public NLB is provisioned.
 base_helm_args=(
   --version "$chart_version"
   --namespace "$NS_OSMO_CONTROL_PLANE"
   --set-string "global.osmoImageTag=$image_version"
+  --set "gateway.envoy.enabled=false"
+  --set "gateway.oauth2Proxy.enabled=false"
+  --set "gateway.authz.enabled=false"
 )
 [[ "$use_acr" == "true" ]] && base_helm_args+=(--set "global.osmoImageLocation=${acr_login_server}/osmo")
 [[ "$nvcr_auth_active" == "true" ]] && base_helm_args+=(--set "global.imagePullSecret=$NVCR_PULL_SECRET")
 
-# Deploy service
+# Deploy service (consolidated chart: API + router + UI)
 info "Deploying osmo/service..."
-helm_args=("${base_helm_args[@]}" -f "$service_values" --set "services.postgres.serviceName=$pg_fqdn" --set "services.postgres.user=$pg_user")
+helm_args=(
+  "${base_helm_args[@]}"
+  -f "$service_values"
+  --set "services.postgres.serviceName=$pg_fqdn"
+  --set "services.postgres.user=$pg_user"
+  --set "services.ui.enabled=true"
+  --set "services.ui.apiHostname=osmo-service.${NS_OSMO_CONTROL_PLANE}.svc.cluster.local:80"
+)
 if [[ "$use_incluster_redis" == "true" ]]; then
   helm_args+=(
     --set "services.redis.enabled=true"
@@ -326,29 +339,11 @@ fi
 
 if [[ "$use_acr" == "true" ]]; then
   helm upgrade -i service "oci://${acr_login_server}/helm/service" "${helm_args[@]}" --wait --timeout "$TIMEOUT_DEPLOY"
+elif [[ -n "${OSMO_CHART_SHA256:-}" ]]; then
+  osmo_tgz=$(pull_and_verify_chart "osmo/service" "$chart_version" "$OSMO_CHART_SHA256" "$(mktemp -d)")
+  helm upgrade -i service "$osmo_tgz" "${helm_args[@]}" --wait --timeout "$TIMEOUT_DEPLOY"
 else
   helm upgrade -i service osmo/service "${helm_args[@]}" --wait --timeout "$TIMEOUT_DEPLOY"
-fi
-
-# Deploy router
-info "Deploying osmo/router..."
-helm_args=("${base_helm_args[@]}" -f "$router_values" --set "services.postgres.serviceName=$pg_fqdn" --set "services.postgres.user=$pg_user")
-[[ -n "$osmo_identity_client_id" ]] && helm_args+=(-f "$router_identity_values" --set "serviceAccount.annotations.azure\.workload\.identity/client-id=$osmo_identity_client_id")
-
-if [[ "$use_acr" == "true" ]]; then
-  helm upgrade -i router "oci://${acr_login_server}/helm/router" "${helm_args[@]}" --wait --timeout "$TIMEOUT_DEPLOY"
-else
-  helm upgrade -i router osmo/router "${helm_args[@]}" --wait --timeout "$TIMEOUT_DEPLOY"
-fi
-
-# Deploy web-ui
-info "Deploying osmo/web-ui..."
-helm_args=("${base_helm_args[@]}" -f "$ui_values" --set "services.ui.apiHostname=osmo-service.${NS_OSMO_CONTROL_PLANE}.svc.cluster.local:80")
-
-if [[ "$use_acr" == "true" ]]; then
-  helm upgrade -i ui "oci://${acr_login_server}/helm/web-ui" "${helm_args[@]}" --wait --timeout "$TIMEOUT_DEPLOY"
-else
-  helm upgrade -i ui osmo/web-ui "${helm_args[@]}" --wait --timeout "$TIMEOUT_DEPLOY"
 fi
 
 #------------------------------------------------------------------------------

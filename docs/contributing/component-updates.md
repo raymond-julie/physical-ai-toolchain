@@ -22,8 +22,8 @@ For quick dependency commands, see the [Component Updates](pull-request-process.
 |---------------------------|-----------|--------------------------------------------------------------------|-----------------|------------------|
 | NVIDIA GPU Operator       | Helm      | `infrastructure/setup/defaults.conf` → `GPU_OPERATOR_VERSION`      | v25.3.4         | Manual           |
 | KAI Scheduler             | Helm      | `infrastructure/setup/defaults.conf` → `KAI_SCHEDULER_VERSION`     | v0.5.5          | Manual           |
-| OSMO Chart                | Helm      | `infrastructure/setup/defaults.conf` → `OSMO_CHART_VERSION`        | 1.0.1           | Manual           |
-| OSMO Image                | Container | `infrastructure/setup/defaults.conf` → `OSMO_IMAGE_VERSION`        | 6.0.0           | Manual           |
+| OSMO Chart                | Helm      | `infrastructure/setup/defaults.conf` → `OSMO_CHART_VERSION`        | 1.3.0           | Manual           |
+| OSMO Image                | Container | `infrastructure/setup/defaults.conf` → `OSMO_IMAGE_VERSION`        | 6.3.0           | Manual           |
 | AzureML K8s Extension     | Azure CLI | `infrastructure/setup/defaults.conf` → `AZUREML_EXTENSION_VERSION` | 1.3.1           | Manual           |
 | Isaac Lab                 | Container | Hardcoded in 7+ files                                              | 2.3.2           | Manual grep      |
 | Azure Terraform Providers | Terraform | `versions.tf` across 8 directories                                 | Floor-pinned    | Dependabot (2/4) |

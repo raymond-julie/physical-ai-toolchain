@@ -1,7 +1,7 @@
 # Global configuration shared across all OSMO services
 global:
   osmoImageLocation: nvcr.io/nvidia/osmo
-  osmoImageTag: 6.2
+  osmoImageTag: 6.3.0
   serviceAccountName: osmo-control-plane
 
   logs:
@@ -50,17 +50,6 @@ services:
       minReplicas: 1
       maxReplicas: 3
 
-    # Ingress configuration
-    ingress:
-      prefix: /
-      ingressClass: azureml-nginx  # e.g. alb, nginx
-      sslEnabled: false  # Set to true if managing SSL at the ingress level
-      annotations:
-        nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
-        nginx.ingress.kubernetes.io/proxy-buffers: "8 16k"
-        nginx.ingress.kubernetes.io/proxy-busy-buffers-size: "32k"
-        nginx.ingress.kubernetes.io/large-client-header-buffers: "4 16k"
-
     # Resource allocation - reduced for constrained system node pools
     resources:
       requests:
@@ -68,6 +57,34 @@ services:
         memory: "256Mi"
       limits:
         memory: "1Gi"
+
+  # Router service configuration (folded from the standalone router chart in 6.3).
+  # Reduced replicas/resources for constrained system node pools; the router shares
+  # the service workload-identity ServiceAccount, so no separate identity override.
+  router:
+    scaling:
+      minReplicas: 1
+      maxReplicas: 2
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        memory: "512Mi"
+
+  # UI service configuration (folded from the standalone web-ui chart in 6.3).
+  # apiHostname is also set via --set in 03-deploy so the UI reaches the API
+  # service directly while the gateway tier is disabled.
+  ui:
+    enabled: true
+    apiHostname: "osmo-service.osmo-control-plane.svc.cluster.local:80"
+    # Resource allocation - reduced for constrained system node pools
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        memory: "512Mi"
 
   # Worker service configuration
   worker:
@@ -115,51 +132,17 @@ services:
       limits:
         memory: "512Mi"
 
-# Sidecar container configurations
-sidecars:
-  # Global Envoy proxy configuration
+# Gateway tier configuration (replaces the per-chart sidecars model in 6.3).
+# Disabled here so OSMO uses Tier-2 defaultAdmin token auth behind the AzureML
+# internal-LB nginx ingress instead of the chart's public LoadBalancer NLB.
+# These disables are also passed via --set in 03-deploy (the script flags are the
+# source of truth); they are mirrored here for clarity.
+# To enable Tier-3 (IdP) auth, set these to true and configure the gateway's
+# Envoy jwt.providers / oauth2Proxy OIDC settings per the chart values.
+gateway:
   envoy:
     enabled: false
-    # Tier 3 (IdP): set enabled: true and configure jwt.providers:
-    # jwt:
-    #   providers:
-    #     - issuer: "https://sts.windows.net/<tenant-id>/"
-    #       audience: "<client-id>"
-    #       jwks_uri: "https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys"
-    #       user_claim: unique_name
-    #       cluster: idp
-    #     - issuer: osmo
-    #       audience: osmo
-    #       jwks_uri: http://localhost:8000/api/auth/keys
-    #       user_claim: unique_name
-    #       cluster: service
-
-    # OSMO auth service configuration
-    osmoauth:
-      enabled: false
-
-  logAgent:
-    enabled: false
-
-  # OAuth2 Proxy configuration (requires OIDC setup)
   oauth2Proxy:
     enabled: false
-    # Tier 3 (IdP): set enabled: true and configure:
-    # provider: oidc
-    # oidcIssuerUrl: "https://login.microsoftonline.com/<tenant-id>/v2.0"
-    # clientId: "<client-id>"
-    # useKubernetesSecrets: true
-    # secretName: oauth2-proxy-secrets
-
-  # Authorization sidecar
   authz:
-    enabled: false
-    # Tier 3 (IdP): set enabled: true for RBAC enforcement
-
-  # OpenTelemetry configuration (optional)
-  otel:
-    enabled: false
-
-  # Rate limiting configuration (optional)
-  rateLimit:
     enabled: false

@@ -1,0 +1,34 @@
+# API Ingress for the OSMO control plane (osmo-service).
+#
+# OSMO 6.3 consolidated the router and web-ui charts into the service chart and
+# stopped rendering per-service Ingress objects; ingress now exists only under the
+# disabled gateway tier. This repo-owned Ingress replaces the chart-rendered
+# per-service ingress from 6.2 and routes API traffic via the AzureML internal-LB
+# nginx controller (ingressClassName: azureml-nginx).
+#
+# Deployed by: 03-deploy-osmo-control-plane.sh (kubectl apply -n osmo-control-plane)
+#
+# UI HTTP access (gateway disabled) is via port-forward until a UI host rule is added:
+#   kubectl port-forward svc/osmo-ui -n osmo-control-plane 8000:80
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: osmo-control-plane
+  annotations:
+    # Handle large OAuth2 response headers from identity providers.
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "16k"
+    nginx.ingress.kubernetes.io/proxy-buffers: "8 16k"
+    nginx.ingress.kubernetes.io/proxy-busy-buffers-size: "32k"
+    nginx.ingress.kubernetes.io/large-client-header-buffers: "4 16k"
+spec:
+  ingressClassName: azureml-nginx
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: osmo-service
+                port:
+                  number: 80

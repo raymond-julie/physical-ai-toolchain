@@ -476,3 +476,4 @@ AGENTS.md
 envs/
 
 datasets/
+*.tgz

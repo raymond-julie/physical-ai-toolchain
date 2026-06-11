@@ -126,8 +126,8 @@ ACR_NAME=$(terraform output -json container_registry | jq -r '.value.name')
 az acr login --name "$ACR_NAME"
 
 # Set versions
-OSMO_VERSION="${OSMO_VERSION:-6.0.0}"
-CHART_VERSION="${CHART_VERSION:-1.0.0}"
+OSMO_VERSION="${OSMO_VERSION:-6.3.0}"
+CHART_VERSION="${CHART_VERSION:-1.3.0}"
 
 OSMO_IMAGES=(
   service router web-ui worker logger agent
@@ -141,7 +141,7 @@ for img in "${OSMO_IMAGES[@]}"; do
 done
 
 # Import Helm charts
-for chart in osmo router ui backend-operator; do
+for chart in service backend-operator; do
   helm pull "oci://nvcr.io/nvidia/osmo/${chart}" --version "$CHART_VERSION"
   helm push "${chart}-${CHART_VERSION}.tgz" "oci://${ACR_NAME}.azurecr.io/helm"
   rm "${chart}-${CHART_VERSION}.tgz"
