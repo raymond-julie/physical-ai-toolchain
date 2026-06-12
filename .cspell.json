@@ -23,6 +23,7 @@
 		"unstub",
 		"uppercased",
 		"varname",
+		"workstreams",
 		"xticklabels"
 	],
 	"ignorePaths": [
