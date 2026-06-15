@@ -1,9 +1,13 @@
 # CLAUDE.md
 
 You are working in the synthetic data generation folder designed for
-creating and running a synthetic data generation workflow autonomously.
+creating and running a synthetic data generation workflow.
 Prioritize accurate configuration, reliable workflow generation, robust
 workflow execution, and explicit verification over speed.
+
+You must run build, test, osmo, kubectl, az, and all terminal commands
+in the dev container where the user started the current session. Run
+all command with `-u code`, not root.
 
 ## Before You Begin
 

@@ -1,5 +1,5 @@
 ---
-name: Synthetic Data Manager
+name: Synthetic Data Generator
 description: >-
   Use when running synthetic data generation workflows in the synthetic-data
   folder: video data augmentation (VDA), auto-labeling, defect image generation
@@ -25,7 +25,7 @@ tools:
   - agent
 ---
 
-# Synthetic Data Manager
+# Synthetic Data Generator
 
 Multi-turn agent for creating and running synthetic data generation workflows
 in the `synthetic-data/` folder. Handles the full lifecycle: blueprint
