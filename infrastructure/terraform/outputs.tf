@@ -250,6 +250,11 @@ output "notation_signer_uami_client_id" {
   value       = try(module.notation_akv[0].uami_client_id, null)
 }
 
+output "kyverno_acr_pull_uami_client_id" {
+  description = "Client ID of the Kyverno ACR-pull workload identity for imageRegistryCredentials.providers azure (null when signing_mode != notation). Wire into the Kyverno HelmRelease as AZURE_ACR_PULL_CLIENT_ID."
+  value       = try(module.notation_akv[0].kyverno_acr_pull_uami_client_id, null)
+}
+
 output "sigstore_mirror_url" {
   description = "Base URL of the air-gapped Sigstore TUF mirror (null when not deployed)."
   value       = try(module.sigstore_mirror[0].mirror_url, null)

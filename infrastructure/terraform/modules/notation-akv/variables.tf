@@ -9,6 +9,21 @@ variable "signer_subject_claims" {
   type        = list(string)
 }
 
+variable "should_create_kyverno_acr_pull_identity" {
+  description = "Whether to provision the Kyverno ACR-pull workload identity (UAMI + AcrPull + federated credentials). Gated additionally by should_deploy."
+  type        = bool
+  default     = true
+}
+
+variable "kyverno_acr_pull_subject_claims" {
+  description = "Federated credential subject claims for the Kyverno controllers that fetch signatures from the private ACR via the azure registry credential provider."
+  type        = list(string)
+  default = [
+    "system:serviceaccount:kyverno:kyverno-admission-controller",
+    "system:serviceaccount:kyverno:kyverno-background-controller",
+  ]
+}
+
 variable "should_deploy" {
   description = "Whether to provision the Notation signing identity. Set to true when signing_mode = \"notation\"."
   type        = bool

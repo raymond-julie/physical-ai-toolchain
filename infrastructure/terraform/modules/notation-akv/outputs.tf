@@ -34,3 +34,18 @@ output "key_vault_uri" {
   description = "URI of the Key Vault holding the signing key."
   value       = local.key_vault_uri
 }
+
+output "kyverno_acr_pull_uami_client_id" {
+  description = "Client ID of the Kyverno ACR-pull workload identity, annotated onto the Kyverno controller ServiceAccounts (null when not created)."
+  value       = try(azurerm_user_assigned_identity.kyverno_acr_pull[0].client_id, null)
+}
+
+output "kyverno_acr_pull_uami_principal_id" {
+  description = "Principal (object) ID of the Kyverno ACR-pull workload identity (null when not created)."
+  value       = try(azurerm_user_assigned_identity.kyverno_acr_pull[0].principal_id, null)
+}
+
+output "kyverno_acr_pull_uami_id" {
+  description = "Resource ID of the Kyverno ACR-pull workload identity (null when not created)."
+  value       = try(azurerm_user_assigned_identity.kyverno_acr_pull[0].id, null)
+}

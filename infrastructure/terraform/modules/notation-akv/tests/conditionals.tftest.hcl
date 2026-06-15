@@ -62,6 +62,21 @@ run "disabled_creates_nothing" {
     condition     = length(azurerm_federated_identity_credential.notation_signer) == 0
     error_message = "Federated identity credentials must not be created when should_deploy is false."
   }
+
+  assert {
+    condition     = length(azurerm_user_assigned_identity.kyverno_acr_pull) == 0
+    error_message = "Kyverno ACR-pull UAMI must not be created when should_deploy is false."
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.kyverno_acr_pull) == 0
+    error_message = "Kyverno AcrPull role assignment must not be created when should_deploy is false."
+  }
+
+  assert {
+    condition     = length(azurerm_federated_identity_credential.kyverno_acr_pull) == 0
+    error_message = "Kyverno ACR-pull federated credentials must not be created when should_deploy is false."
+  }
 }
 
 run "enabled_creates_managed_key_vault" {
@@ -128,6 +143,26 @@ run "enabled_creates_managed_key_vault" {
   assert {
     condition     = length(azurerm_federated_identity_credential.notation_signer) == 1
     error_message = "Module must create one federated identity credential per signer subject claim."
+  }
+
+  assert {
+    condition     = length(azurerm_user_assigned_identity.kyverno_acr_pull) == 1
+    error_message = "Module must create the Kyverno ACR-pull UAMI when should_deploy is true."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.kyverno_acr_pull[0].role_definition_name == "AcrPull"
+    error_message = "Kyverno ACR-pull UAMI must receive the AcrPull role."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.kyverno_acr_pull[0].scope == run.setup.acr.id
+    error_message = "Kyverno AcrPull role assignment must be scoped to the ACR."
+  }
+
+  assert {
+    condition     = length(azurerm_federated_identity_credential.kyverno_acr_pull) == 2
+    error_message = "Module must create one federated credential per Kyverno controller ServiceAccount (admission + background)."
   }
 }
 

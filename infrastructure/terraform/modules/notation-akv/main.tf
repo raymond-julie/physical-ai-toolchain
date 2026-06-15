@@ -20,6 +20,13 @@ locals {
   // Provision a new Key Vault only when the caller did not pass one in.
   should_create_key_vault = var.key_vault == null && var.should_deploy
 
+  // Kyverno ACR-pull workload identity is created alongside the signing
+  // identity. It authenticates the admission and background controllers to the
+  // private ACR for imageRegistryCredentials.providers: [azure] signature
+  // fetches. Housed here for now; both signing modes consume the policies, so a
+  // dedicated module is the longer-term home.
+  create_kyverno_acr_pull = var.should_deploy && var.should_create_kyverno_acr_pull_identity
+
   // Resolved Key Vault id used by downstream resources (key + role assignment).
   key_vault_id  = var.key_vault != null ? var.key_vault.id : try(azurerm_key_vault.notation[0].id, null)
   key_vault_uri = var.key_vault != null ? var.key_vault.vault_uri : try(azurerm_key_vault.notation[0].vault_uri, null)
@@ -99,6 +106,45 @@ resource "azurerm_federated_identity_credential" "notation_signer" {
   name                = "fc-notation-${local.resource_name_suffix}-${substr(sha256(each.value), 0, 8)}"
   resource_group_name = var.resource_group.name
   parent_id           = azurerm_user_assigned_identity.notation_signer[0].id
+  audience            = ["api://AzureADTokenExchange"]
+  issuer              = var.aks.oidc_issuer_url
+  subject             = each.value
+}
+
+// ============================================================================
+// Kyverno ACR-pull workload identity.
+//
+// Authenticates the Kyverno admission and background controllers to the private
+// ACR so imageRegistryCredentials.providers: [azure] in the verifyImages
+// policies can fetch signatures without a stored pull secret. The controller
+// ServiceAccounts are annotated with this identity's client ID via the Kyverno
+// HelmRelease (substituted as ${AZURE_ACR_PULL_CLIENT_ID}).
+// ============================================================================
+
+resource "azurerm_user_assigned_identity" "kyverno_acr_pull" {
+  count = local.create_kyverno_acr_pull ? 1 : 0
+
+  name                = "id-kyverno-acrpull-${local.resource_name_suffix}"
+  resource_group_name = var.resource_group.name
+  location            = var.location
+}
+
+// Role assignment: Kyverno ACR-pull UAMI -> AcrPull on the project registry.
+resource "azurerm_role_assignment" "kyverno_acr_pull" {
+  count = local.create_kyverno_acr_pull ? 1 : 0
+
+  scope                = var.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.kyverno_acr_pull[0].principal_id
+}
+
+// Federated identity credentials: one per Kyverno controller ServiceAccount.
+resource "azurerm_federated_identity_credential" "kyverno_acr_pull" {
+  for_each = local.create_kyverno_acr_pull ? toset(var.kyverno_acr_pull_subject_claims) : toset([])
+
+  name                = "fc-kyverno-acrpull-${local.resource_name_suffix}-${substr(sha256(each.value), 0, 8)}"
+  resource_group_name = var.resource_group.name
+  parent_id           = azurerm_user_assigned_identity.kyverno_acr_pull[0].id
   audience            = ["api://AzureADTokenExchange"]
   issuer              = var.aks.oidc_issuer_url
   subject             = each.value

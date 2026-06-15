@@ -11,9 +11,8 @@ variable "aks" {
   })
 }
 
-// tflint-ignore: terraform_unused_declarations
 variable "acr" {
-  description = "Container registry the signing identity will publish to. Reserved for future ACR role-assignment wiring; accepted today to keep the module contract stable."
+  description = "Container registry the signing identity publishes to and the Kyverno ACR-pull identity is granted AcrPull on."
   type = object({
     id           = string
     login_server = string
