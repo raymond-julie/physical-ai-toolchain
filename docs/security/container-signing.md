@@ -3,7 +3,7 @@ sidebar_position: 5
 title: Container Image Signing
 description: Reference architecture for cosign keyless and Notation+AKV container image signing, attestations, and admission enforcement
 author: Microsoft Robotics-AI Team
-ms.date: 2026-04-25
+ms.date: 2026-06-15
 ms.topic: reference
 keywords:
   - container signing
@@ -105,11 +105,59 @@ Kyverno is deployed as the admission controller via Flux. Two policies are distr
 * [`kyverno-sigstore-policy.yaml`](../../fleet-deployment/gitops/clusters/base/admission/kyverno-sigstore-policy.yaml) — requires a cosign signature whose certificate identity matches this repository's allowed workflow refs.
 * [`kyverno-notation-policy.yaml`](../../fleet-deployment/gitops/clusters/base/admission/kyverno-notation-policy.yaml) — requires a Notation signature anchored to the AKV-issued trusted root.
 
-Each policy contains two rules: one validating the signature, one validating the SLSA provenance attestation. Policies are tested with `kyverno test policies/kyverno/` against pre-rendered fixtures (see [DD-07](../../.copilot-tracking/plans/logs/2026-04-25/container-signing-log.md) for why fixtures are pre-rendered rather than templated). Run admission readiness checks with:
+Each policy carries two rules that together form a scope guard, not one signature rule plus one attestation rule:
+
+| Rule                        | Action  | Scope                                                                                                     | Purpose                                            |
+|-----------------------------|---------|----------------------------------------------------------------------------------------------------------|----------------------------------------------------|
+| `require-signed-images-acr` | Enforce | Images matching `${ACR_LOGIN_SERVER}/*` in the `osmo-workflows`, `azureml`, `dataviewer`, and `fleet-*` namespaces | Reject unsigned private-ACR images at admission    |
+| `audit-all-other-images`    | Audit   | Every other image; private-ACR references are excluded via `skipImageReferences`                          | Report, but do not block, third-party images       |
+
+Signature verification is the only admission check. Neither rule validates a SLSA provenance attestation — provenance and the other attestations are produced at build time and consumed by the offline verification tooling, not at admission.
+
+Policies are tested with `kyverno test policies/kyverno/` against pre-rendered fixtures.
+
+### Private-registry credentials
+
+Both policies set `imageRegistryCredentials` so Kyverno can authenticate to a private ACR when fetching signatures. Without it, verification fails with `UNAUTHORIZED`: Kyverno's secret informer is scoped to its own namespace and never reads a workload's `imagePullSecrets`.
+
+| Element              | Value                                                                                              |
+|----------------------|----------------------------------------------------------------------------------------------------|
+| Credential reference | `imageRegistryCredentials.providers: [azure]` on every `verifyImages` rule in both policies            |
+| Identity             | The admission and background controllers authenticate through Azure workload identity; no stored credential |
+| Role                 | The managed identity behind `${AZURE_ACR_PULL_CLIENT_ID}` must hold AcrPull on the target registry  |
+| Wiring               | [`kyverno-helmrelease.yaml`](../../fleet-deployment/gitops/clusters/base/admission/kyverno-helmrelease.yaml) annotates the controller ServiceAccounts and labels their pods for workload identity |
+
+The `azure` provider acquires a registry token in-process for each fetch, so there is no docker-registry secret to provision or rotate. `${AZURE_ACR_PULL_CLIENT_ID}` is substituted by Flux `postBuild.substituteFrom` from the workflow-config ConfigMap shipped per cluster.
+
+> [!NOTE]
+> The managed identity, its AcrPull role assignment, and a federated credential bound to the Kyverno admission and background controller ServiceAccounts must exist before the `azure` provider can authenticate. A non-Azure or fully offline cluster can substitute `imageRegistryCredentials.secrets: [<pull-secret>]` referencing a docker-registry secret in the `kyverno` namespace instead.
+
+### Notation trusted-identity pinning
+
+For Notation, the image-signer identity is pinned by the AKV-rooted certificate chain on the attestor (`attestors[].certificates.certChain`). The reference signing key uses a self-signed leaf certificate whose subject equals its issuer, so cert-chain trust is itself the identity pin.
+
+> [!WARNING]
+> Do not add a standalone `attestations:` block to pin trusted identity. A block with no nested `attestors` nil-dereferences `buildNotaryVerifier` and panics Kyverno v1.18, yet still passes the mocked `kyverno test` suite. To restrict identity under a shared CA that issues multiple signer certificates, use attestor-level `trustedIdentities` or the Notation trust policy instead.
+
+### Readiness probe
+
+Run the readiness check, supplying the deployed signing mode:
 
 ```bash
-./scripts/security/check-admission-readiness.sh
+./scripts/security/check-admission-readiness.sh --mode notation
 ```
+
+The trusted-root check is mode-aware. Notation embeds its certificate chain in the policy, so notation mode does not require the sigstore-only `sigstore-trusted-root` ConfigMap.
+
+| `--mode`   | Default trusted-root ConfigMap | Missing or stale behavior                            |
+|------------|--------------------------------|------------------------------------------------------|
+| `sigstore` | `sigstore-trusted-root`        | Fatal                                                |
+| `notation` | `notation-akv-cert-chain`      | Warn — the cert chain is inlined in the policy        |
+
+`--trust-root-configmap <name>` overrides the per-mode default.
+
+> [!WARNING]
+> `kyverno test` mocks signature verification, so it validates policy structure and match logic but never exercises live verification or catches a webhook panic. A malformed Notation policy passes the mocked suite and still crashes admission at runtime. Validate a rendered policy against a live Kyverno install before rollout, confirming that a signed image admits and an unsigned image is rejected.
 
 ## Troubleshooting
 
@@ -118,6 +166,8 @@ Each policy contains two rules: one validating the signature, one validating the
 | `cosign verify` fails with `no matching signatures`   | Image was rebuilt after signing or the wrong digest was used                | Re-resolve the digest from the registry; never verify by tag                                                |
 | Kyverno blocks the image with `failed identity check` | Workflow ref drift after a branch rename or fork                            | Update the policy's `subject` regex; redeploy via Flux                                                      |
 | Notation `signature not found`                        | Image was published before notation publishing was enabled in that pipeline | Re-run [`container-publish-notation.yml`](../../.github/workflows/container-publish-notation.yml)           |
+| Kyverno webhook panics or pods fail admission with an internal error on the notation policy | A malformed `attestations:` block with no nested `attestors` nil-dereferences Kyverno v1.18 | Pin identity through the attestor certificate chain instead, then verify the rendered policy against a live Kyverno install to confirm admission |
+| Private-ACR signature fetch fails with `UNAUTHORIZED` | Policy is missing `imageRegistryCredentials`, or the Kyverno controllers' workload identity lacks AcrPull on the registry | Confirm the policy references `providers: [azure]` and that the `${AZURE_ACR_PULL_CLIENT_ID}` identity holds AcrPull with a federated credential bound to the admission and background controller ServiceAccounts |
 | Edge cluster cannot reach Rekor                       | Outbound egress is blocked, expected on airgapped fleets                    | Confirm `should_deploy_sigstore_mirror = true` and the mirror pod is healthy                                |
 | Trivy reports CVEs already triaged                    | VEX attestation missing or stale                                            | Add or update a statement under [`security/vex/`](../../security/vex) and re-run the vulnerability workflow |
 
