@@ -69,7 +69,7 @@ spec:
           # Private-ACR signature fetch uses the Kyverno controllers' Azure
           # workload identity (AcrPull on the registry); no stored credential.
           imageRegistryCredentials:
-            helpers:
+            providers:
               - azure
           # Image-signer identity is pinned by this self-signed leaf certificate
           # (subject == issuer), so cert-chain trust IS the identity pin. For a
@@ -102,7 +102,7 @@ spec:
           # Private-ACR signature fetch uses the Kyverno controllers' Azure
           # workload identity (AcrPull on the registry); no stored credential.
           imageRegistryCredentials:
-            helpers:
+            providers:
               - azure
           attestors:
             - count: 1

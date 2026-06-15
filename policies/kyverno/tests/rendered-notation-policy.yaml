@@ -34,7 +34,7 @@ spec:
           mutateDigest: true
           useCache: true
           imageRegistryCredentials:
-            helpers:
+            providers:
               - azure
           attestors:
             - count: 1
@@ -62,7 +62,7 @@ spec:
           mutateDigest: false
           useCache: true
           imageRegistryCredentials:
-            helpers:
+            providers:
               - azure
           attestors:
             - count: 1

@@ -67,7 +67,7 @@ spec:
           # Private-ACR signature fetch uses the Kyverno controllers' Azure
           # workload identity (AcrPull on the registry); no stored credential.
           imageRegistryCredentials:
-            helpers:
+            providers:
               - azure
           attestors:
             - count: 1
@@ -97,7 +97,7 @@ spec:
           # Private-ACR signature fetch uses the Kyverno controllers' Azure
           # workload identity (AcrPull on the registry); no stored credential.
           imageRegistryCredentials:
-            helpers:
+            providers:
               - azure
           attestors:
             - count: 1
