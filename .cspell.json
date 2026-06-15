@@ -23,7 +23,9 @@
 		"unstub",
 		"uppercased",
 		"varname",
+		"vLLM",
 		"workstreams",
+		"worktree",
 		"xticklabels"
 	],
 	"ignorePaths": [
