@@ -64,6 +64,11 @@ spec:
           mutateDigest: true
           useCache: true
           cosignOCI11: true
+          # Private-ACR signature fetch uses the Kyverno controllers' Azure
+          # workload identity (AcrPull on the registry); no stored credential.
+          imageRegistryCredentials:
+            helpers:
+              - azure
           attestors:
             - count: 1
               entries:
@@ -89,6 +94,11 @@ spec:
           verifyDigest: false
           mutateDigest: false
           useCache: true
+          # Private-ACR signature fetch uses the Kyverno controllers' Azure
+          # workload identity (AcrPull on the registry); no stored credential.
+          imageRegistryCredentials:
+            helpers:
+              - azure
           attestors:
             - count: 1
               entries:

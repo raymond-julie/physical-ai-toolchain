@@ -18,9 +18,8 @@
 # notation-akv-cert-chain ConfigMap is materialised by the trusted-root
 # CronJob; placeholder reference is resolved at admission time.
 #
-# ${ACR_LOGIN_SERVER} and ${NOTATION_TRUST_IDENTITY} are substituted by Flux
-# postBuild.substituteFrom using the workflow-config ConfigMap shipped per
-# cluster.
+# ${ACR_LOGIN_SERVER} is substituted by Flux postBuild.substituteFrom using
+# the workflow-config ConfigMap shipped per cluster.
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
@@ -67,20 +66,22 @@ spec:
           verifyDigest: true
           mutateDigest: true
           useCache: true
+          # Private-ACR signature fetch uses the Kyverno controllers' Azure
+          # workload identity (AcrPull on the registry); no stored credential.
+          imageRegistryCredentials:
+            helpers:
+              - azure
+          # Image-signer identity is pinned by this self-signed leaf certificate
+          # (subject == issuer), so cert-chain trust IS the identity pin. For a
+          # shared CA that issues multiple signer certs, restrict identity via
+          # attestor-level trustedIdentities or the notation trust policy — not a
+          # standalone attestations entry, which panics Kyverno v1.18.
           attestors:
             - count: 1
               entries:
                 - certificates:
                     certChain: |-
                       ${NOTATION_TRUST_CERT_CHAIN_PEM}
-          attestations:
-            - type: application/vnd.cncf.notary.signature
-              conditions:
-                - all:
-                    - key: "{{ trustedIdentities }}"
-                      operator: AnyIn
-                      value:
-                        - "${NOTATION_TRUST_IDENTITY}"
     - name: audit-all-other-images
       match:
         any:
@@ -98,6 +99,11 @@ spec:
           verifyDigest: false
           mutateDigest: false
           useCache: true
+          # Private-ACR signature fetch uses the Kyverno controllers' Azure
+          # workload identity (AcrPull on the registry); no stored credential.
+          imageRegistryCredentials:
+            helpers:
+              - azure
           attestors:
             - count: 1
               entries:

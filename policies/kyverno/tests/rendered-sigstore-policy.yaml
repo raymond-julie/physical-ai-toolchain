@@ -31,6 +31,9 @@ spec:
           mutateDigest: true
           useCache: true
           cosignOCI11: true
+          imageRegistryCredentials:
+            helpers:
+              - azure
           attestors:
             - count: 1
               entries:
@@ -56,6 +59,9 @@ spec:
           verifyDigest: false
           mutateDigest: false
           useCache: true
+          imageRegistryCredentials:
+            helpers:
+              - azure
           attestors:
             - count: 1
               entries:

@@ -24,7 +24,8 @@ Options:
   --mode <sigstore|notation>          Expected signing mode (default: sigstore)
   --policy-name <name>                Override ClusterPolicy name (default depends on --mode)
   --trust-root-namespace <ns>         Namespace holding the trusted-root ConfigMap (default: kyverno)
-  --trust-root-configmap <name>       Trusted-root ConfigMap name (default: sigstore-trusted-root)
+  --trust-root-configmap <name>       Trusted-root ConfigMap name (default depends on --mode:
+                                      sigstore -> sigstore-trusted-root, notation -> notation-akv-cert-chain)
   --max-age-hours <int>               Warn if trusted-root older than N hours (default: 24)
   --config-preview                    Print resolved configuration and exit without probing
   --help                              Show this help and exit
@@ -34,7 +35,7 @@ EOF
 MODE="sigstore"
 POLICY_NAME=""
 TRUST_ROOT_NS="kyverno"
-TRUST_ROOT_CM="sigstore-trusted-root"
+TRUST_ROOT_CM=""
 MAX_AGE_HOURS="24"
 CONFIG_PREVIEW="false"
 
@@ -61,9 +62,19 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Mode resolves both the default policy name and the default trusted-root
+# ConfigMap. Sigstore reads sigstore-trusted-root; notation inlines its cert
+# chain (materialized as notation-akv-cert-chain by the trusted-root CronJob).
+# An explicit --trust-root-configmap overrides the per-mode default.
 case "${MODE}" in
-    sigstore) : "${POLICY_NAME:=verify-images-sigstore}" ;;
-    notation) : "${POLICY_NAME:=verify-images-notation}" ;;
+    sigstore)
+        : "${POLICY_NAME:=verify-images-sigstore}"
+        : "${TRUST_ROOT_CM:=sigstore-trusted-root}"
+        ;;
+    notation)
+        : "${POLICY_NAME:=verify-images-notation}"
+        : "${TRUST_ROOT_CM:=notation-akv-cert-chain}"
+        ;;
     *) fatal "--mode must be sigstore or notation (got: ${MODE})" ;;
 esac
 
@@ -119,6 +130,8 @@ if kubectl get configmap "${TRUST_ROOT_CM}" -n "${TRUST_ROOT_NS}" >/dev/null 2>&
     else
         warn "Could not read creationTimestamp on trusted-root ConfigMap."
     fi
+elif [[ "${MODE}" == "notation" ]]; then
+    warn "Trusted-root ConfigMap ${TRUST_ROOT_NS}/${TRUST_ROOT_CM} not found; notation inlines its cert chain in the policy."
 else
     error "Trusted-root ConfigMap ${TRUST_ROOT_NS}/${TRUST_ROOT_CM} not found."
 fi
@@ -150,7 +163,13 @@ print_kv "Policy loaded" "${POLICY_OK}"
 print_kv "Trust-root fresh" "${TRUST_ROOT_OK}"
 print_kv "Dry-run executed" "${DRYRUN_OK}"
 
-if [[ "${KYVERNO_OK}" != "true" || "${POLICY_OK}" != "true" || "${TRUST_ROOT_OK}" != "true" ]]; then
+# Notation inlines its cert chain in the policy, so a missing trusted-root
+# ConfigMap is a warning there, not a readiness failure. Sigstore requires it.
+trust_root_required="true"
+[[ "${MODE}" == "notation" ]] && trust_root_required="false"
+
+if [[ "${KYVERNO_OK}" != "true" || "${POLICY_OK}" != "true" ]] \
+    || { [[ "${trust_root_required}" == "true" && "${TRUST_ROOT_OK}" != "true" ]]; }; then
     fatal "Admission control is not ready."
 fi
 
