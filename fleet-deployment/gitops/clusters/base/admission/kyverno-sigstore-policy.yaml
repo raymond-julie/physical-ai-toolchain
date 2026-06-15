@@ -36,6 +36,9 @@ spec:
   validationFailureAction: Enforce
   background: true
   failurePolicy: Fail
+  # Cosign keyless verification can take 5-8s on a cold cache; allow headroom
+  # over the 10s admission default.
+  webhookTimeoutSeconds: 30
   # Namespace scoping is enforced per-rule via match.any[].resources.namespaces.
   # A spec.webhookConfiguration.matchConditions block was removed because the
   # Kyverno CLI test/apply runner panics on it (CLI does not exercise webhook

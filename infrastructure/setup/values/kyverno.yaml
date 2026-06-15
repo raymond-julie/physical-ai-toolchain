@@ -15,6 +15,13 @@
 # Match-conditions evaluation requires the v2 webhook config the chart enables
 # by default for >= v1.13. Pin to a known-good chart version in defaults.conf.
 
+# Upgrade and migrate CRDs on reconcile; the post-upgrade hook runs the 1.13
+# stored-version migration for dropped CRD API versions.
+crds:
+  install: true
+  migration:
+    enabled: true
+
 admissionController:
   replicas: 3
   podDisruptionBudget:
@@ -26,6 +33,15 @@ admissionController:
     requests:
       cpu: 100m
       memory: 384Mi
+  # Image-verification cache flags. Chart 3.8.x removed the
+  # features.imageVerifyCache* value keys; these are now passed as admission
+  # controller CLI args. Reduce the TTL to force re-verification after a
+  # trusted-root refresh; balance against Rekor/AKV call volume.
+  container:
+    extraArgs:
+      imageVerifyCacheEnabled: true
+      imageVerifyCacheTTLDuration: 60m
+      imageVerifyCacheMaxSize: 1000
 
 backgroundController:
   replicas: 2
@@ -45,25 +61,18 @@ reportsController:
     enabled: true
     minAvailable: 1
 
-# Image-verification cache TTL (seconds). Reduce to force re-verification
-# after trusted-root refresh; balance against Rekor/AKV call volume.
+# Image-verification cache TTL is configured via admissionController container
+# args above (chart 3.8.x dropped the features.imageVerifyCache* keys).
 features:
-  imageVerifyCacheEnabled: true
-  imageVerifyCacheTTLDuration: 60m
-  imageVerifyCacheMaxSize: 1000
-
-# Webhook timeout - cosign keyless verification can take 5-8s on cold cache.
-webhooksCleanup:
-  enabled: true
-config:
-  webhooks:
-    - timeoutSeconds: 30
-      failurePolicy: Fail
+  policyExceptions:
+    # Retain cluster-wide policy-exception scope; CVE-2024-48921 narrowed the
+    # 1.13 default to the controller namespace.
+    namespace: "*"
+# Default per-controller RBAC covers the pods/configmaps reads this
+# image-verification setup needs; the 1.13 wildcard view-RBAC removal requires
+# no extraResources here.
 
 # Notation plugin sidecar is provisioned by the trusted-root Kustomization;
 # Kyverno reaches it via the in-cluster service. No chart change required.
-
-# RBAC for reading the notation-akv-cert-chain ConfigMap created by the
-# trusted-root CronJob.
-rbac:
-  create: true
+# Per-controller RBAC (created by chart default) reads the
+# notation-akv-cert-chain ConfigMap; no top-level rbac key exists.
