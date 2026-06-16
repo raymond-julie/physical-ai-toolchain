@@ -1,0 +1,412 @@
+# ==============================================================================
+# OSMO Training Workflow — LeRobot fine-tune over NFS-mounted dataset
+#
+# Reads the LeRobot dataset directly from the cluster's NFS server
+# (192.168.1.100:/srv/lerobot/first_dataset) at /data, and writes
+# checkpoints + tensorboard logs to /outputs/<workflow-id> on the same
+# NFS server. No OSMO dataset upload is required for either side, so
+# the LocalStack S3 PVC (5 Gi) does not need to be expanded.
+#
+# Prerequisites (one-time, see register-lerobot-nfs.ps1 under the on-prem
+# OSMO setup area):
+#   1. /srv/lerobot/first_dataset is populated on the NFS server
+#   2. /srv/lerobot/outputs exists on the NFS server and is RW-exported
+#   3. nfs-common is installed on every GPU worker
+#   4. The "lerobot_nfs" pod template is registered and added to the
+#      default pool's common_pod_template
+#
+# Usage:
+#   osmo workflow submit train-lerobot.yaml
+#   osmo workflow submit train-lerobot.yaml --set max_steps=2000 batch_size=16
+#
+# After completion, the trained checkpoint is at:
+#   192.168.1.100:/srv/lerobot/outputs/<workflow_id>/
+# ==============================================================================
+workflow:
+  name: "{{workflow_name}}"
+
+  resources:
+    default:
+      cpu: 16
+      memory: 48Gi
+      storage: 32Gi
+      gpu: {{gpu}}
+      # Pin to RTX 5090 (32 GiB) workers; the 4090 worker (24 GiB) OOMs
+      # during the GR00T-N1.5 forward pass when --tune-visual is enabled.
+      # Override with `--set platform=default` to allow the 4090 again
+      # (only safe if you also drop --tune-visual or shrink batch_size).
+      platform: "{{platform}}"
+
+  timeout:
+    exec_timeout: 2d
+    queue_timeout: 4h
+
+  tasks:
+    - name: train
+      image: "{{image}}"
+      command: ["bash"]
+      args: ["/tmp/train.sh"]
+      environment:
+        DATASET_PATH: "/data"
+        OUTPUT_ROOT: "/outputs"
+        DATA_CONFIG: "{{data_config}}"
+        BASE_MODEL: "{{base_model}}"
+        BATCH_SIZE: "{{batch_size}}"
+        MAX_STEPS: "{{max_steps}}"
+        SAVE_STEPS: "{{save_steps}}"
+        DATALOADER_WORKERS: "{{dataloader_workers}}"
+        EMBODIMENT_TAG: "{{embodiment_tag}}"
+        ISAAC_GROOT_REF: "{{isaac_groot_ref}}"
+        # Resume support. If RUN_ID_OVERRIDE is set, OUTPUT_DIR points at
+        # an existing run directory on the NFS share, and RESUME=true
+        # tells HF Trainer to load the latest checkpoint-* in that dir.
+        RUN_ID_OVERRIDE: "{{run_id_override}}"
+        RESUME: "{{resume}}"
+        # Mirror final checkpoint + tensorboard to Azure ML on success.
+        # Requires the `azureml_creds` pod template + `azureml-credentials`
+        # K8s Secret (see register-azureml.ps1). Default OFF: the on-prem
+        # NFS share remains the canonical sink.
+        AZURE_UPLOAD: "{{azure_upload}}"
+        PYTHONUNBUFFERED: "1"
+        # Reduce CUDA allocator fragmentation; safe and recommended for
+        # large training jobs per PyTorch docs.
+        PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+      files:
+        - path: /tmp/mlflow_log.py
+          contents: |
+            """Mirror an OSMO training run to Azure ML.
+
+            Logs hyperparameters + tensorboard scalars + the final HF
+            checkpoint as artifacts under an MLflow run, then registers
+            the artifacts as a new version of $AZUREML_MODEL_NAME in the
+            workspace's model registry. Auth is via a Service Principal
+            certificate (no client secret).
+
+            Required env (set by the `azureml_creds` pod template, fed
+            from the `azureml-credentials` K8s Secret):
+              AZURE_TENANT_ID, AZURE_CLIENT_ID,
+              AZURE_CLIENT_CERTIFICATE_PATH,
+              AZURE_SUBSCRIPTION_ID, AZUREML_RESOURCE_GROUP,
+              AZUREML_WORKSPACE_NAME, AZUREML_REGION,
+              AZUREML_MODEL_NAME
+              RUN_ID, OUTPUT_DIR (set by train.sh)
+            """
+            import glob, json, os, pathlib, shutil, sys, tempfile
+
+            # azureml-mlflow's artifact uploader defaults to a 300 s task-queue
+            # flush; multi-GB checkpoint uploads over a residential link blow
+            # past that. Bump it to 2 h before importing mlflow so the env var
+            # is read by the AzureML artifact client at construction time.
+            os.environ.setdefault("AZUREML_ARTIFACTS_DEFAULT_TIMEOUT", "7200")
+
+            import mlflow
+            from azure.ai.ml import MLClient
+            from azure.identity import CertificateCredential
+
+            REQUIRED = [
+                "AZURE_TENANT_ID", "AZURE_CLIENT_ID",
+                "AZURE_CLIENT_CERTIFICATE_PATH",
+                "AZURE_SUBSCRIPTION_ID", "AZUREML_RESOURCE_GROUP",
+                "AZUREML_WORKSPACE_NAME", "AZUREML_MODEL_NAME",
+                "RUN_ID", "OUTPUT_DIR",
+            ]
+            missing = [k for k in REQUIRED if not os.environ.get(k)]
+            if missing:
+                sys.exit(f"Azure ML mirror: missing env vars: {missing}")
+
+            output_dir = pathlib.Path(os.environ["OUTPUT_DIR"])
+            if not output_dir.exists():
+                sys.exit(f"Azure ML mirror: {output_dir} does not exist")
+
+            cred = CertificateCredential(
+                tenant_id=os.environ["AZURE_TENANT_ID"],
+                client_id=os.environ["AZURE_CLIENT_ID"],
+                certificate_path=os.environ["AZURE_CLIENT_CERTIFICATE_PATH"],
+            )
+            ml_client = MLClient(
+                credential=cred,
+                subscription_id=os.environ["AZURE_SUBSCRIPTION_ID"],
+                resource_group_name=os.environ["AZUREML_RESOURCE_GROUP"],
+                workspace_name=os.environ["AZUREML_WORKSPACE_NAME"],
+            )
+            ws = ml_client.workspaces.get(os.environ["AZUREML_WORKSPACE_NAME"])
+            mlflow.set_tracking_uri(ws.mlflow_tracking_uri)
+            mlflow.set_experiment(os.environ["AZUREML_MODEL_NAME"])
+
+            run_name = os.environ["RUN_ID"]
+            with mlflow.start_run(run_name=run_name) as run:
+                # ---- params: anything the workflow passed via env ----
+                mlflow.log_params({
+                    k: os.environ[k]
+                    for k in (
+                        "DATA_CONFIG", "BASE_MODEL", "BATCH_SIZE",
+                        "MAX_STEPS", "SAVE_STEPS", "DATALOADER_WORKERS",
+                        "EMBODIMENT_TAG", "ISAAC_GROOT_REF",
+                    )
+                    if os.environ.get(k) is not None
+                })
+                mlflow.set_tag("osmo.run_id", run_name)
+                mlflow.set_tag("osmo.output_dir", str(output_dir))
+
+                # ---- artifact 1: tensorboard logs ----
+                tb_dir = output_dir / "runs"
+                if tb_dir.exists():
+                    mlflow.log_artifacts(str(tb_dir), artifact_path="tensorboard")
+                    print(f"logged tensorboard from {tb_dir}")
+
+                # ---- artifact 2: highest checkpoint-N (filtered) ----
+                ckpts = sorted(
+                    glob.glob(str(output_dir / "checkpoint-*")),
+                    key=lambda p: int(p.rsplit("-", 1)[-1]) if p.rsplit("-", 1)[-1].isdigit() else -1,
+                )
+                if not ckpts:
+                    sys.exit("Azure ML mirror: no checkpoint-* dirs found; aborting model registration")
+                final = pathlib.Path(ckpts[-1])
+
+                # Skip files that only matter for a local `--resume` (we keep
+                # the full checkpoint on the NFS share). Removing the
+                # optimizer / scheduler / rng state typically halves the
+                # upload size and cuts wall time roughly in half.
+                SKIP_NAMES = {"optimizer.pt", "optimizer.bin",
+                              "scheduler.pt", "rng_state.pth"}
+                # Stage on the same filesystem as the source so os.link()
+                # succeeds (no copy) and we don't blow past the pod's
+                # ephemeral storage limit. /outputs is the NFS mount.
+                staging_root = output_dir / ".aml-staging"
+                staging_root.mkdir(exist_ok=True)
+                staged = pathlib.Path(tempfile.mkdtemp(prefix="aml-upload-", dir=str(staging_root)))
+                try:
+                    for src in final.rglob("*"):
+                        if src.is_dir():
+                            continue
+                        if src.name in SKIP_NAMES:
+                            continue
+                        rel = src.relative_to(final)
+                        dst = staged / rel
+                        dst.parent.mkdir(parents=True, exist_ok=True)
+                        # Hard-link when possible (same filesystem); fall back to copy.
+                        try:
+                            os.link(src, dst)
+                        except OSError:
+                            shutil.copy2(src, dst)
+                    staged_size = sum(p.stat().st_size for p in staged.rglob("*") if p.is_file())
+                    print(f"staged {final} -> {staged} ({staged_size/1024**3:.2f} GiB) for upload")
+                    mlflow.log_artifacts(str(staged), artifact_path="model")
+                    print(f"logged final checkpoint: {final}")
+                finally:
+                    shutil.rmtree(staged, ignore_errors=True)
+
+                # ---- register as a new model version ----
+                model_uri = f"runs:/{run.info.run_id}/model"
+                registered = mlflow.register_model(
+                    model_uri=model_uri,
+                    name=os.environ["AZUREML_MODEL_NAME"],
+                )
+                print(json.dumps({
+                    "mlflow_run_id": run.info.run_id,
+                    "model_name":    registered.name,
+                    "model_version": registered.version,
+                    "checkpoint":    str(final),
+                }, indent=2))
+        - path: /tmp/train.sh
+          contents: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            # Each workflow run gets its own subdirectory under /outputs.
+            # WF_ID / WF_UUID are injected by OSMO into the pod env; fall back
+            # to a timestamp if running outside of OSMO.
+            if [ -n "${RUN_ID_OVERRIDE:-}" ]; then
+              RUN_ID="${RUN_ID_OVERRIDE}"
+              echo "RUN_ID_OVERRIDE set: reusing existing output dir ${RUN_ID}"
+            else
+              RUN_ID="${WF_ID:-run-$(date -u +%Y%m%d-%H%M%S)}"
+            fi
+            OUTPUT_DIR="${OUTPUT_ROOT}/${RUN_ID}"
+            mkdir -p "${OUTPUT_DIR}"
+
+            # Resolve --resume / --no-resume based on RESUME=true|false.
+            if [ "${RESUME:-false}" = "true" ]; then
+              RESUME_FLAG="--resume"
+              LATEST_CKPT="$(ls -1d ${OUTPUT_DIR}/checkpoint-* 2>/dev/null | sort -t- -k2 -n | tail -1 || true)"
+              if [ -z "${LATEST_CKPT}" ]; then
+                echo "ERROR: RESUME=true but no checkpoint-* found in ${OUTPUT_DIR}" >&2
+                exit 1
+              fi
+              echo "Resuming from checkpoint: ${LATEST_CKPT}"
+            else
+              RESUME_FLAG="--no-resume"
+            fi
+
+            echo "========================================================"
+            echo " LeRobot / GR00T-N1.5 fine-tune"
+            echo "   node:        $(hostname)"
+            echo "   date (utc):  $(date -u)"
+            echo "   dataset:     ${DATASET_PATH}"
+            echo "   output:      ${OUTPUT_DIR}"
+            echo "   base model:  ${BASE_MODEL}"
+            echo "   data config: ${DATA_CONFIG}"
+            echo "   batch_size:  ${BATCH_SIZE}"
+            echo "   max_steps:   ${MAX_STEPS}"
+            echo "========================================================"
+
+            nvidia-smi
+            df -h /dev/shm /data /outputs || true
+            echo "--- /data ---"; ls -1 "${DATASET_PATH}" | head
+            echo "--- /data/meta ---"; ls -1 "${DATASET_PATH}/meta" | head
+
+            # Dependencies (mirror the GR00T nut-pouring cookbook finetune recipe).
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y --no-install-recommends \
+              git git-lfs build-essential cmake ffmpeg \
+              libgl1-mesa-glx libglib2.0-0 libsm6 libxext6 libxrender-dev \
+              libvulkan-dev ca-certificates wget curl >/dev/null
+
+            cd /workspace || cd /tmp
+            if [ ! -d Isaac-GR00T ]; then
+              git clone https://github.com/NVIDIA/Isaac-GR00T.git
+              git -C Isaac-GR00T checkout "${ISAAC_GROOT_REF}"
+            fi
+            cd Isaac-GR00T
+
+            pip install --upgrade setuptools
+            pip install gpustat wandb==0.19.0
+            pip install -e .[base]
+            pip uninstall -y transformer-engine || true
+            pip uninstall -y opencv-python opencv-python-headless || true
+            rm -rf /usr/local/lib/python3.10/dist-packages/cv2 /usr/local/lib/python3.11/dist-packages/cv2 || true
+            pip install opencv-python==4.8.0.74
+
+            # ----------------------------------------------------------------
+            # GPU-aware torch install:
+            #   - RTX 5090 / Blackwell (sm_120) needs torch >= 2.7.0 built
+            #     against CUDA 12.8. The cookbook-pinned torch==2.5.1+cu124
+            #     wheels only ship kernels up through sm_90 and fail with
+            #     "CUDA error: no kernel image is available" on a 5090.
+            #   - For older Ada / Ampere GPUs we keep the original 2.5.1+cu124
+            #     pin so we don't disturb known-good environments.
+            # ----------------------------------------------------------------
+            GPU_PRODUCT="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || true)"
+            echo "Detected GPU: ${GPU_PRODUCT}"
+            if echo "${GPU_PRODUCT}" | grep -qiE '5090|5080|5070|B100|B200'; then
+              echo "Blackwell GPU detected: installing torch 2.7.0 + cu128 wheels"
+              pip install --force-reinstall \
+                --timeout 600 --retries 5 \
+                --index-url https://download.pytorch.org/whl/cu128 \
+                torch==2.7.0 torchvision==0.22.0 torchaudio==2.7.0
+              pip install --force-reinstall numpy==1.26.4
+              # flash-attn 2.7.4.post1 ships prebuilt wheels for torch 2.7 / cu128.
+              # IMPORTANT: --no-deps so pip does not silently upgrade torch to the
+              # latest release (2.11+), which would break torchvision==0.22.0+cu128
+              # and surface as "operator torchvision::nms does not exist".
+              pip install --force-reinstall --timeout 600 --retries 5 --no-deps --no-build-isolation flash_attn==2.7.4.post1
+            else
+              echo "Pre-Blackwell GPU: keeping torch 2.5.1 + cu124 pins"
+              pip install --force-reinstall \
+                torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 numpy==1.26.4
+              pip install --force-reinstall --no-deps flash_attn==2.7.1.post4
+            fi
+            # Sanity check: training will fail later if torch was clobbered above.
+            python -c "import torch, torchvision; print('torch=', torch.__version__, 'tv=', torchvision.__version__, 'cuda=', torch.version.cuda)"
+            pip install -e . --no-deps
+            pip install "accelerate>=0.26.0"
+            pip install torchcodec || true
+
+            # ----------------------------------------------------------------
+            # Inject a custom dual-UR5e data-config (12-DoF, 3 cameras, no
+            # grippers/hands). gr00t_finetune.py only accepts keys that exist
+            # in DATA_CONFIG_MAP at import time, so we patch the file before
+            # launching the trainer. Idempotent.
+            # ----------------------------------------------------------------
+            DATA_CFG_PY="$(pwd)/gr00t/experiment/data_config.py"
+            if ! grep -q '"dual_ur5e"' "${DATA_CFG_PY}"; then
+              # Patch is base64-encoded (single line) so it can be embedded
+              # inside this YAML literal block without heredoc-indentation
+              # conflicts.
+              echo 'CgojIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMKIyBEdWFsIFVSNWUgKFNjaGFlZmZsZXIgcm9ib2NlbGwpIC0tIDEyLURvRiBzdGF0ZS9hY3Rpb24sIDMgRDQwNSBjYW1lcmFzLCBubyBncmlwcGVycy4KIyBTdGF0ZS9hY3Rpb24gbGF5b3V0IChkZWZpbmVkIGluIG1ldGEvbW9kYWxpdHkuanNvbik6CiMgICByaWdodF9hcm0gPSBvYnNbMDo2XSwgbGVmdF9hcm0gPSBvYnNbNjoxMl0KIyBWaWRlbyBrZXlzIChkZWZpbmVkIGluIG1ldGEvbW9kYWxpdHkuanNvbik6CiMgICB2aWRlby5zdGF0aW9uYXJ5X3JpZ2h0LCB2aWRlby5zdGF0aW9uYXJ5X2xlZnRfMSwgdmlkZW8uc3RhdGlvbmFyeV9sZWZ0XzIKIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjCmNsYXNzIER1YWxVcjVlRGF0YUNvbmZpZyhTbzEwMERhdGFDb25maWcpOgogICAgdmlkZW9fa2V5cyA9IFsKICAgICAgICAidmlkZW8uc3RhdGlvbmFyeV9yaWdodCIsCiAgICAgICAgInZpZGVvLnN0YXRpb25hcnlfbGVmdF8xIiwKICAgICAgICAidmlkZW8uc3RhdGlvbmFyeV9sZWZ0XzIiLAogICAgXQogICAgc3RhdGVfa2V5cyA9IFsic3RhdGUucmlnaHRfYXJtIiwgInN0YXRlLmxlZnRfYXJtIl0KICAgIGFjdGlvbl9rZXlzID0gWyJhY3Rpb24ucmlnaHRfYXJtIiwgImFjdGlvbi5sZWZ0X2FybSJdCiAgICBsYW5ndWFnZV9rZXlzID0gWyJhbm5vdGF0aW9uLmh1bWFuLnRhc2tfZGVzY3JpcHRpb24iXQogICAgb2JzZXJ2YXRpb25faW5kaWNlcyA9IFswXQogICAgYWN0aW9uX2luZGljZXMgPSBsaXN0KHJhbmdlKDE2KSkKCgpEQVRBX0NPTkZJR19NQVBbImR1YWxfdXI1ZSJdID0gRHVhbFVyNWVEYXRhQ29uZmlnKCkK' | base64 -d >> "${DATA_CFG_PY}"
+              echo "  patched ${DATA_CFG_PY} with dual_ur5e config"
+            fi
+
+            # Log GPU memory headroom before training so any future OOM is
+            # easy to triage from the workflow logs.
+            python -c "import torch; p=torch.cuda.get_device_properties(0); print(f'[preflight] GPU: {p.name}  total={p.total_memory/1024**3:.2f} GiB  sm={p.major}.{p.minor}')"
+
+            echo "--- starting training ---"
+            python scripts/gr00t_finetune.py \
+              --dataset-path "${DATASET_PATH}" \
+              --output-dir "${OUTPUT_DIR}" \
+              --data-config "${DATA_CONFIG}" \
+              --batch-size "${BATCH_SIZE}" \
+              --max-steps "${MAX_STEPS}" \
+              --num-gpus 1 \
+              --save-steps "${SAVE_STEPS}" \
+              --base-model-path "${BASE_MODEL}" \
+              --no-tune-llm \
+              --tune-visual \
+              --tune-projector \
+              --tune-diffusion-model \
+              ${RESUME_FLAG} \
+              --dataloader-num-workers "${DATALOADER_WORKERS}" \
+              --report-to tensorboard \
+              --embodiment-tag "${EMBODIMENT_TAG}"
+
+            echo "--- training done ---"
+            du -sh "${OUTPUT_DIR}"
+            ls -lh "${OUTPUT_DIR}" | head
+
+            # ----------------------------------------------------------------
+            # Optional: mirror the final checkpoint + tensorboard logs to
+            # Azure ML, and register the result as a new version of the
+            # model named in $AZUREML_MODEL_NAME (e.g. lerobot-ur5e).
+            #
+            # Local /outputs/<run_id>/ stays canonical. The Azure copy is
+            # for cross-team visibility, model registry, and AML Studio
+            # metric tracking. Skipped silently if AZURE_UPLOAD!=true or
+            # the azureml-credentials Secret is missing (cluster never
+            # registered with register-azureml.ps1).
+            # ----------------------------------------------------------------
+            if [ "${AZURE_UPLOAD:-false}" = "true" ]; then
+              if [ ! -f "${AZURE_CLIENT_CERTIFICATE_PATH:-/etc/azureml/cert.pem}" ]; then
+                echo "AZURE_UPLOAD=true but no cert at ${AZURE_CLIENT_CERTIFICATE_PATH}; cluster not registered with register-azureml.ps1. Skipping." >&2
+              else
+                echo "--- mirroring run to Azure ML ---"
+                pip install --quiet \
+                  'mlflow>=2.10,<3' \
+                  'azureml-mlflow>=1.55' \
+                  'azure-identity>=1.17' \
+                  'azure-ai-ml>=1.20'
+                RUN_ID="${RUN_ID}" OUTPUT_DIR="${OUTPUT_DIR}" \
+                  python /tmp/mlflow_log.py || \
+                  echo "WARN: Azure ML mirror failed; local run at ${OUTPUT_DIR} is unaffected." >&2
+              fi
+            fi
+
+            echo "TRAIN_RESULT=PASS"
+
+default-values:
+  workflow_name: lerobot-train          # OSMO workflow name (also used as RUN_ID)
+  image: pytorch/pytorch:2.6.0-cuda12.4-cudnn9-devel
+  gpu: 1                                # GPUs per task
+  platform: gpu_5090                    # Pin to RTX 5090 (32 GiB) workers; see resources.default.platform above
+  data_config: dual_ur5e                # custom 12-DoF dual-UR5e + 3 cams (injected by train.sh)
+  base_model: nvidia/GR00T-N1.5-3B
+  batch_size: 4                         # Lowered from 16 after CUDA OOM on 5090 (32 GiB) at batch=16: peak ~30.5 GiB / sample ~1.9 GiB with --tune-visual + --tune-diffusion-model + 3 cams. batch=4 → ~7-8 GiB activations, plenty of headroom.
+  max_steps: 10000
+  save_steps: 1000
+  dataloader_workers: 4                 # Lowered from 12 after /dev/shm exhaustion (Bus error in DataLoader); each worker spawns shm fds for prefetch buffers
+  embodiment_tag: new_embodiment        # NEW_EMBODIMENT for custom robots
+  isaac_groot_ref: 796ca8d87360913c47e9f75e17c11d63f7805048
+  # Resume controls (default = fresh run). To resume a prior run that was
+  # interrupted (e.g. power loss), submit with both:
+  #   --set run_id_override=run-20260428-174241 resume=true
+  # The training script will load the highest-numbered checkpoint-* in
+  # /outputs/<run_id_override>/ and continue training to max_steps.
+  run_id_override: ""
+  resume: "false"
+  # Azure ML mirror (default ON). Set to "false" to skip the post-training
+  # push to the workspace named in the azureml-credentials K8s Secret.
+  # Requires a one-time `register-azureml.ps1` to provision the SP + Secret;
+  # if the Secret/cert is missing the upload is skipped with a warning and
+  # the local on-prem run is unaffected.
+  azure_upload: "true"

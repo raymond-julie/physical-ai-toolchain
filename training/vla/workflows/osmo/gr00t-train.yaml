@@ -1,0 +1,263 @@
+# ==============================================================================
+# gr00t-train.yaml — OSMO workflow: finetune GR00T-N1.5-3B on a LeRobot v2.0
+# dual-arm UR5e dataset.
+#
+# Template for `submit-osmo-gr00t-training.sh`. The submit script:
+#   1. Reads `train_gr00t_dual_arm.py` from `training/vla/scripts/`.
+#   2. Indents it 12 spaces and substitutes it for `__TRAIN_SCRIPT__` below.
+#   3. Submits the resulting concrete YAML via `osmo workflow submit`.
+#
+# Shape notes:
+#   - No `inputs[]` block: the task pod uses awscli against the in-cluster
+#     LocalStack S3 (`localstack-s3.osmo:4566`) to sync the pre-staged raw tree
+#     from `s3://osmo/raw/<name>/` into a local directory before training,
+#     avoiding the runtime ValidateDataAuth gate.
+#   - Base image is the NVIDIA PyTorch NGC container (Python 3.12, PyTorch
+#     2.7.0a0, CUDA 12.8, sm_120 Blackwell); GR00T deps are pip-installed at
+#     task start.
+#   - `gradient_checkpointing` + bf16 fits batch-size 16 on a 32 GB RTX 5090.
+#
+# Customer-specific values (NFS server, S3 bucket, GPU platform) are documented
+# defaults in `default-values`; override them via `--set k=v` or the submit
+# script's env vars.
+# ==============================================================================
+workflow:
+  name: "{{workflow_name}}"
+
+  resources:
+    default:
+      cpu: "{{cpu}}"
+      memory: "{{memory}}"
+      storage: "{{storage}}"
+      gpu: "{{gpu}}"
+      platform: "{{platform}}"
+
+  tasks:
+    - name: train
+      image: "{{image}}"
+
+      command: ["bash"]
+      args: ["/tmp/entrypoint.sh"]
+
+      environment:
+        DATASET_PATH: "{{dataset_mount_path}}"
+        DATASET_S3_URI: "{{dataset_s3_uri}}"
+        S3_ENDPOINT_URL: "{{s3_endpoint_url}}"
+        AWS_ACCESS_KEY_ID: "{{s3_access_key}}"
+        AWS_SECRET_ACCESS_KEY: "{{s3_secret_key}}"
+        AWS_DEFAULT_REGION: "us-east-1"
+        OUTPUT_DIR: "{{output_dir}}"
+        MAX_STEPS: "{{max_steps}}"
+        SAVE_STEPS: "{{save_steps}}"
+        BATCH_SIZE: "{{batch_size}}"
+        GRAD_ACCUM: "{{grad_accum}}"
+        LR: "{{lr}}"
+        BASE_MODEL: "{{base_model}}"
+        DATALOADER_NUM_WORKERS: "{{num_workers}}"
+        WORKFLOW_NAME: "{{workflow_name}}"
+        RESUME_FROM: "{{resume_from}}"
+        HF_HOME: "/output/hf-cache"
+        HUGGINGFACE_HUB_CACHE: "/output/hf-cache"
+        TRANSFORMERS_CACHE: "/output/hf-cache"
+        PYTHONUNBUFFERED: "1"
+        # Reduce CUDA memory fragmentation on 24 GB consumer GPUs (RTX 4090)
+        # where activations + AdamW state leave little headroom for
+        # optimizer.step() spikes.
+        PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
+        # Compile kernels for RTX 4090 (sm_89) and RTX 5090 Blackwell (sm_120).
+        TORCH_CUDA_ARCH_LIST: "8.9;12.0"
+        # HF tokens are not embedded; pass via --set hf_token=... for gated models.
+        HF_TOKEN: "{{hf_token}}"
+
+      files:
+        # Bash entrypoint: install GR00T + deps, then run the training script.
+        # Pinned to match the PEP 723 metadata in `train_gr00t_dual_arm.py`.
+        - path: /tmp/entrypoint.sh
+          contents: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            # Default OUTPUT_DIR to the NFS-backed /outputs share when unset.
+            # OSMO templating cannot resolve {{workflow_name}} inside another
+            # default-value, so resolve it here at run time. /outputs is mounted
+            # from the NFS server on every pool node.
+            if [[ -z "${OUTPUT_DIR:-}" ]]; then
+              OUTPUT_DIR="/outputs/${WORKFLOW_NAME}"
+              export OUTPUT_DIR
+            fi
+
+            echo "============================================================"
+            echo " GR00T-N1.5-3B finetune on OSMO"
+            echo "   node:        $(hostname)"
+            echo "   date:        $(date -u)"
+            echo "   workflow:    ${WORKFLOW_NAME}"
+            echo "   dataset:     ${DATASET_PATH} (synced from ${DATASET_S3_URI})"
+            echo "   s3 endpoint: ${S3_ENDPOINT_URL}"
+            echo "   output:      ${OUTPUT_DIR}"
+            echo "   max_steps:   ${MAX_STEPS}"
+            echo "   batch_size:  ${BATCH_SIZE}"
+            echo "   grad_accum:  ${GRAD_ACCUM}"
+            echo "   lr:          ${LR}"
+            echo "   base_model:  ${BASE_MODEL}"
+            echo "============================================================"
+
+            echo "--- nvidia-smi ---"
+            if command -v nvidia-smi >/dev/null 2>&1; then
+              nvidia-smi || echo "WARN: nvidia-smi failed but continuing";
+            else
+              echo "WARN: nvidia-smi not on PATH; will rely on torch.cuda probe";
+              ls /usr/local/nvidia/bin /usr/local/cuda/bin /usr/bin 2>/dev/null | grep -i nvidia || true;
+            fi
+            echo "--- torch.cuda probe ---"
+            python -c "import torch; print('torch=', torch.__version__, 'cuda=', torch.cuda.is_available(), 'devs=', torch.cuda.device_count()); assert torch.cuda.is_available(), 'CUDA not visible to torch'; print('name=', torch.cuda.get_device_name(0), 'cap=', torch.cuda.get_device_capability(0))" || { echo "FATAL: torch cannot see CUDA"; exit 1; }
+
+            mkdir -p "${DATASET_PATH}" "${OUTPUT_DIR}" "${HF_HOME}"
+
+            echo "--- apt install git (required for pip git+https) ---"
+            export DEBIAN_FRONTEND=noninteractive
+            # The Ubuntu security mirror occasionally returns a stale Packages.gz
+            # mid-sync; retry update a few times and tolerate partial failure.
+            for i in 1 2 3; do
+              if apt-get update -qq -o Acquire::Retries=3; then break; fi
+              echo "apt-get update attempt ${i} failed, retrying in 10s..."
+              sleep 10
+            done
+            apt-get install -y --no-install-recommends git ca-certificates curl build-essential g++ ninja-build >/dev/null
+
+            echo "--- pip install (this may take a few minutes) ---"
+            # Use the NFS-backed /outputs share as a persistent pip cache so
+            # wheels are downloaded once and reused across workflow runs.
+            PIP_CACHE="/outputs/.pip-cache"
+            mkdir -p "${PIP_CACHE}"
+            # NGC images ship a PIP_CONSTRAINT file that pins internal package
+            # versions which conflict with GR00T's own pins. Clear it.
+            unset PIP_CONSTRAINT PIP_INDEX_URL || true
+            python -m pip install --cache-dir "${PIP_CACHE}" --upgrade pip
+
+            # Install Isaac-GR00T (the NGC image already ships torch/torchvision)
+            # plus training deps the gr00t.* import chain needs.
+            python -m pip install --cache-dir "${PIP_CACHE}" \
+              awscli \
+              "git+https://github.com/NVIDIA/Isaac-GR00T.git@n1.5-release" \
+              transformers diffusers decord accelerate
+
+            # bitsandbytes provides the 8-bit AdamW optimizer (adamw_bnb_8bit),
+            # which cuts optimizer state ~4x and is the difference between
+            # training and OOM on a 24 GB 4090.
+            python -m pip install --cache-dir "${PIP_CACHE}" bitsandbytes
+
+            # flash-attn is required by the Eagle backbone in GR00T-N1.5.
+            echo "--- installing flash-attn prebuilt wheel ---"
+            if ! python -c "import flash_attn" 2>/dev/null; then
+              FA_VER="2.7.4.post1"
+              FA_WHL="flash_attn-${FA_VER}+cu12torch2.7cxx11abiFALSE-cp312-cp312-linux_x86_64.whl"
+              FA_URL="https://github.com/Dao-AILab/flash-attention/releases/download/v${FA_VER}/${FA_WHL}"
+              python -m pip install --cache-dir "${PIP_CACHE}" --no-build-isolation "${FA_URL}" \
+                || { echo "WARN: prebuilt flash-attn wheel install failed; trying PyPI source build"; \
+                     python -m pip install --cache-dir "${PIP_CACHE}" --no-build-isolation "flash-attn==${FA_VER}" || \
+                     { echo "FATAL: flash-attn install failed; Eagle backbone cannot import"; exit 3; }; }
+            fi
+
+            # pytorch3d: GR00T imports pytorch3d.transforms; install the
+            # pure-python shim (no C++ build needed) so the import succeeds.
+            echo "--- installing pytorch3d (pure-python shim; no C++ build) ---"
+            python -m pip install --cache-dir "${PIP_CACHE}" fvcore iopath
+            if ! python -c "import pytorch3d" 2>/dev/null; then
+              git clone --depth 1 https://github.com/facebookresearch/pytorch3d.git /tmp/pytorch3d-src
+              cd /tmp/pytorch3d-src
+              FORCE_CUDA=0 MAX_JOBS=1 python -m pip install --cache-dir "${PIP_CACHE}" -e . --no-build-isolation 2>/dev/null || \
+                python -m pip install --cache-dir "${PIP_CACHE}" -e . 2>/dev/null || \
+                echo "WARN: pytorch3d install failed; transforms-only import may still work"
+              cd /tmp
+            fi
+            python -c "from pytorch3d import transforms; print('pytorch3d transforms ok')" || true
+
+            echo "--- syncing dataset from ${DATASET_S3_URI} ---"
+            aws --endpoint-url "${S3_ENDPOINT_URL}" s3 sync \
+              "${DATASET_S3_URI}" "${DATASET_PATH}" --no-progress
+
+            echo "--- dataset preview ---"
+            ls -la "${DATASET_PATH}" || true
+            (cd "${DATASET_PATH}" && find . -maxdepth 2 -type d | head -20) || true
+            du -sh "${DATASET_PATH}" || true
+
+            echo "--- launching training ---"
+            RESUME_ARGS=()
+            if [[ -n "${RESUME_FROM:-}" ]]; then
+              echo "   resuming from: ${RESUME_FROM}"
+              RESUME_ARGS+=(--resume "${RESUME_FROM}")
+            fi
+            python /tmp/train_gr00t_dual_arm.py \
+              --dataset "${DATASET_PATH}" \
+              --output "${OUTPUT_DIR}" \
+              --base-model "${BASE_MODEL}" \
+              --max-steps "${MAX_STEPS}" \
+              --save-steps "${SAVE_STEPS}" \
+              --batch-size "${BATCH_SIZE}" \
+              --grad-accum "${GRAD_ACCUM}" \
+              --lr "${LR}" \
+              --num-workers "${DATALOADER_NUM_WORKERS}" \
+              --video-backend torchvision_av \
+              "${RESUME_ARGS[@]+"${RESUME_ARGS[@]}"}"
+
+            echo "--- training complete; checkpoints under ${OUTPUT_DIR} ---"
+            ls -la "${OUTPUT_DIR}" | head -50
+            du -sh "${OUTPUT_DIR}" || true
+
+            # Persist artifacts off the pod's writable layer onto the NFS share
+            # so weights survive pod teardown.
+            PERSIST_ROOT="/outputs/${WORKFLOW_NAME}"
+            case "${OUTPUT_DIR}" in
+              /outputs/*)
+                echo "--- output already on NFS (${OUTPUT_DIR}); skipping copy ---"
+                ;;
+              *)
+                if [[ -d /outputs ]]; then
+                  echo "--- copying ${OUTPUT_DIR} -> ${PERSIST_ROOT} (NFS) ---"
+                  mkdir -p "${PERSIST_ROOT}"
+                  cp -a "${OUTPUT_DIR}/." "${PERSIST_ROOT}/"
+                  du -sh "${PERSIST_ROOT}" || true
+                else
+                  echo "WARN: /outputs NFS mount missing; checkpoints will be lost on pod teardown" >&2
+                fi
+                ;;
+            esac
+
+        # Training script — body inlined by submit-osmo-gr00t-training.sh.
+        - path: /tmp/train_gr00t_dual_arm.py
+          contents: |
+__TRAIN_SCRIPT__
+
+# ------------------------------------------------------------------------------
+# Tunables. Override via `osmo workflow submit --set k=v` or the submit script's
+# env vars (see `submit-osmo-gr00t-training.sh --help`).
+# ------------------------------------------------------------------------------
+default-values:
+  workflow_name: gr00t-n15-dual-arm-combined-sessions
+  dataset_name: combined-sessions
+  dataset_mount_path: /tmp/combined-sessions
+  dataset_s3_uri: s3://osmo/raw/combined-sessions/
+  s3_endpoint_url: http://localstack-s3.osmo:4566
+  s3_access_key: test
+  s3_secret_key: test
+  # /outputs is an NFS share wired into every OSMO task pod. Writing checkpoints
+  # there means they survive pod teardown. Empty string -> the entrypoint
+  # defaults OUTPUT_DIR to /outputs/${WORKFLOW_NAME}.
+  output_dir: ""
+  base_model: nvidia/GR00T-N1.5-3B
+  max_steps: 100000
+  batch_size: 16
+  grad_accum: 2
+  lr: 0.0001
+  num_workers: 4
+  cpu: 8
+  memory: 48Gi
+  storage: 200Gi
+  gpu: 1
+  image: nvcr.io/nvidia/pytorch:25.04-py3
+  hf_token: ""
+  # Platform selects the GPU node type. Available: gpu_4090 (24 GB),
+  # gpu_5090 (32 GB).
+  platform: gpu_5090
+  save_steps: 25000
+  resume_from: ""

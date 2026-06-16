@@ -1,0 +1,31 @@
+{
+  "spec": {
+    "tolerations": [
+      {
+        "key": "nvidia.com/gpu",
+        "effect": "NoSchedule",
+        "operator": "Exists"
+      }
+    ],
+    "volumes": [
+      {
+        "name": "dshm",
+        "emptyDir": {
+          "medium": "Memory",
+          "sizeLimit": "32Gi"
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "{{USER_CONTAINER_NAME}}",
+        "volumeMounts": [
+          {
+            "name": "dshm",
+            "mountPath": "/dev/shm"
+          }
+        ]
+      }
+    ]
+  }
+}

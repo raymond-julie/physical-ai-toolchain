@@ -1,0 +1,102 @@
+{
+  "spec": {
+    "volumes": [
+      {
+        "name": "azureml-creds",
+        "secret": {
+          "secretName": "azureml-credentials",
+          "optional": true,
+          "defaultMode": 384
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "{{USER_CONTAINER_NAME}}",
+        "volumeMounts": [
+          {
+            "name": "azureml-creds",
+            "mountPath": "/etc/azureml",
+            "readOnly": true
+          }
+        ],
+        "env": [
+          {
+            "name": "AZURE_TENANT_ID",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "azureml-credentials",
+                "key": "tenant-id",
+                "optional": true
+              }
+            }
+          },
+          {
+            "name": "AZURE_CLIENT_ID",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "azureml-credentials",
+                "key": "client-id",
+                "optional": true
+              }
+            }
+          },
+          {
+            "name": "AZURE_CLIENT_CERTIFICATE_PATH",
+            "value": "/etc/azureml/cert.pem"
+          },
+          {
+            "name": "AZURE_SUBSCRIPTION_ID",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "azureml-credentials",
+                "key": "subscription-id",
+                "optional": true
+              }
+            }
+          },
+          {
+            "name": "AZUREML_RESOURCE_GROUP",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "azureml-credentials",
+                "key": "resource-group",
+                "optional": true
+              }
+            }
+          },
+          {
+            "name": "AZUREML_WORKSPACE_NAME",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "azureml-credentials",
+                "key": "workspace-name",
+                "optional": true
+              }
+            }
+          },
+          {
+            "name": "AZUREML_REGION",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "azureml-credentials",
+                "key": "region",
+                "optional": true
+              }
+            }
+          },
+          {
+            "name": "AZUREML_MODEL_NAME",
+            "valueFrom": {
+              "secretKeyRef": {
+                "name": "azureml-credentials",
+                "key": "model-name",
+                "optional": true
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,280 @@
+# ==============================================================================
+# openpi-train.yaml — OSMO workflow: finetune pi0.5 (openpi) on a LeRobot v2.1
+# dual-arm UR5e dataset (14-DoF, 4 cameras).
+#
+# Companion of `gr00t-train.yaml` for the openpi stack:
+#   https://github.com/Physical-Intelligence/openpi
+#
+# Template for `submit-osmo-openpi-training.sh`. The submit script:
+#   1. Reads `train_openpi_ur5e_dual_arm.py` and
+#      `openpi_ur5e_dual_arm_policy.py` from `training/vla/scripts/`.
+#   2. Inlines them into the YAML at the marked placeholders.
+#   3. Submits the rendered YAML via `osmo workflow submit`.
+#
+# Container shape mirrors `gr00t-train.yaml` (same NFS /outputs, same in-cluster
+# LocalStack S3). At task start it pip-installs openpi + JAX-CUDA + LeRobot,
+# clones the openpi repo at the pinned ref, drops the policy + train modules
+# next to it, syncs the dataset, then runs the training driver.
+# ==============================================================================
+workflow:
+  name: "{{workflow_name}}"
+
+  resources:
+    default:
+      cpu: "{{cpu}}"
+      memory: "{{memory}}"
+      storage: "{{storage}}"
+      gpu: "{{gpu}}"
+      platform: "{{platform}}"
+
+  tasks:
+    - name: train
+      image: "{{image}}"
+
+      command: ["bash"]
+      args: ["/tmp/entrypoint.sh"]
+
+      environment:
+        DATASET_PATH: "{{dataset_mount_path}}"
+        DATASET_S3_URI: "{{dataset_s3_uri}}"
+        S3_ENDPOINT_URL: "{{s3_endpoint_url}}"
+        AWS_ACCESS_KEY_ID: "{{s3_access_key}}"
+        AWS_SECRET_ACCESS_KEY: "{{s3_secret_key}}"
+        AWS_DEFAULT_REGION: "us-east-1"
+        OUTPUT_DIR: "{{output_dir}}"
+        OPENPI_DIR: "/opt/openpi"
+        OPENPI_REF: "{{openpi_ref}}"
+        EXP_NAME: "{{exp_name}}"
+        MAX_STEPS: "{{max_steps}}"
+        SAVE_INTERVAL: "{{save_interval}}"
+        BATCH_SIZE: "{{batch_size}}"
+        NUM_WORKERS: "{{num_workers}}"
+        FSDP_DEVICES: "{{fsdp_devices}}"
+        DEFAULT_PROMPT: "{{default_prompt}}"
+        MODEL_VARIANT: "{{model_variant}}"        # "pi05" or "pi0"
+        TRAIN_MODE: "{{train_mode}}"              # "full" or "lora"
+        RESUME: "{{resume}}"
+        WORKFLOW_NAME: "{{workflow_name}}"
+        HF_HOME: "/outputs/hf-cache"
+        HUGGINGFACE_HUB_CACHE: "/outputs/hf-cache"
+        TRANSFORMERS_CACHE: "/outputs/hf-cache"
+        XLA_PYTHON_CLIENT_MEM_FRACTION: "0.9"
+        PYTHONUNBUFFERED: "1"
+        # Optional gated-model token (e.g. for a PaliGemma weights mirror).
+        HF_TOKEN: "{{hf_token}}"
+        # Optional W&B logging.
+        WANDB_API_KEY: "{{wandb_api_key}}"
+        WANDB_PROJECT: "{{wandb_project}}"
+        WANDB_DISABLED: "{{wandb_disabled}}"
+        WANDB_MODE: "disabled"
+
+      files:
+        # ----------------------------------------------------------------
+        # Bash entrypoint — installs openpi & launches the training driver.
+        # ----------------------------------------------------------------
+        - path: /tmp/entrypoint.sh
+          contents: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+
+            if [[ -z "${OUTPUT_DIR:-}" ]]; then
+              OUTPUT_DIR="/outputs/${WORKFLOW_NAME}"
+              export OUTPUT_DIR
+            fi
+
+            echo "============================================================"
+            echo " openpi (${MODEL_VARIANT} / ${TRAIN_MODE}) finetune on OSMO"
+            echo "   node:        $(hostname)"
+            echo "   date:        $(date -u)"
+            echo "   workflow:    ${WORKFLOW_NAME}"
+            echo "   dataset:     ${DATASET_PATH} (from ${DATASET_S3_URI})"
+            echo "   output:      ${OUTPUT_DIR}"
+            echo "   exp_name:    ${EXP_NAME}"
+            echo "   max_steps:   ${MAX_STEPS}    save_interval: ${SAVE_INTERVAL}"
+            echo "   batch_size:  ${BATCH_SIZE}   num_workers:   ${NUM_WORKERS}"
+            echo "   fsdp:        ${FSDP_DEVICES}"
+            echo "   openpi ref:  ${OPENPI_REF}"
+            echo "============================================================"
+
+            echo "--- nvidia-smi ---"
+            if command -v nvidia-smi >/dev/null 2>&1; then
+              nvidia-smi || echo "WARN: nvidia-smi failed but continuing";
+            else
+              echo "WARN: nvidia-smi not on PATH; will rely on torch.cuda probe";
+            fi
+            echo "--- torch.cuda probe ---"
+            python -c "import torch; print('torch=', torch.__version__, 'cuda=', torch.cuda.is_available(), 'devs=', torch.cuda.device_count()); assert torch.cuda.is_available(), 'CUDA not visible to torch'; print('name=', torch.cuda.get_device_name(0), 'cap=', torch.cuda.get_device_capability(0))" || { echo "FATAL: torch cannot see CUDA"; exit 1; }
+
+            mkdir -p "${DATASET_PATH}" "${OUTPUT_DIR}" "${HF_HOME}"
+
+            echo "--- apt install build + runtime deps ---"
+            export DEBIAN_FRONTEND=noninteractive
+            for i in 1 2 3; do
+              if apt-get update -qq -o Acquire::Retries=3; then break; fi
+              echo "apt-get update attempt ${i} failed, retrying in 10s..."
+              sleep 10
+            done
+            # build-essential + gcc: required by evdev (openpi dep) C extension.
+            apt-get install -y --no-install-recommends \
+              git git-lfs ca-certificates curl \
+              build-essential g++ \
+              libgl1 libglib2.0-0 ffmpeg >/dev/null
+            git lfs install --skip-smudge
+
+            PIP_CACHE="/outputs/.pip-cache-openpi"
+            mkdir -p "${PIP_CACHE}"
+            # NGC images ship a PIP_CONSTRAINT file that may conflict with
+            # openpi's deps. Clear it.
+            unset PIP_CONSTRAINT PIP_INDEX_URL || true
+            python -m pip install --cache-dir "${PIP_CACHE}" --upgrade pip
+
+            echo "--- cloning openpi @ ${OPENPI_REF} into ${OPENPI_DIR} ---"
+            if [[ ! -d "${OPENPI_DIR}/.git" ]]; then
+              GIT_LFS_SKIP_SMUDGE=1 git clone --recurse-submodules \
+                https://github.com/Physical-Intelligence/openpi.git "${OPENPI_DIR}"
+            fi
+            (cd "${OPENPI_DIR}" \
+               && GIT_LFS_SKIP_SMUDGE=1 git fetch --tags origin \
+               && GIT_LFS_SKIP_SMUDGE=1 git checkout "${OPENPI_REF}" \
+               && GIT_LFS_SKIP_SMUDGE=1 git submodule update --init --recursive)
+
+            echo "--- installing openpi into the system Python ---"
+            # lerobot is declared as a uv source (git) which pip doesn't resolve;
+            # install it explicitly from the same commit openpi pins.
+            GIT_LFS_SKIP_SMUDGE=1 python -m pip install --cache-dir "${PIP_CACHE}" \
+              "lerobot @ git+https://github.com/huggingface/lerobot@0cf864870cf29f4738d3ade893e6fd13fbd7cdb5" \
+              "datasets<3.0"
+            (cd "${OPENPI_DIR}" \
+               && GIT_LFS_SKIP_SMUDGE=1 python -m pip install \
+                   --cache-dir "${PIP_CACHE}" -e . \
+                   "datasets<3.0")
+
+            # openpi replaces NGC's torch with PyPI torch, which breaks the
+            # pre-installed torchcodec (ABI mismatch). Remove it so lerobot falls
+            # back to pyav (FFmpeg 6 in NGC supports AV1).
+            python -m pip uninstall -y torchcodec || true
+
+            # AWS CLI for the dataset sync.
+            python -m pip install --cache-dir "${PIP_CACHE}" awscli
+
+            # Drop the policy module + training driver next to openpi.
+            cp /tmp/openpi_ur5e_dual_arm_policy.py "${OPENPI_DIR}/openpi_ur5e_dual_arm_policy.py"
+            cp /tmp/train_openpi_ur5e_dual_arm.py  "${OPENPI_DIR}/train_openpi_ur5e_dual_arm.py"
+
+            echo "--- syncing dataset from ${DATASET_S3_URI} ---"
+            aws --endpoint-url "${S3_ENDPOINT_URL}" s3 sync \
+              "${DATASET_S3_URI}" "${DATASET_PATH}" --no-progress
+
+            echo "--- dataset preview ---"
+            ls -la "${DATASET_PATH}" || true
+            (cd "${DATASET_PATH}" && find . -maxdepth 2 -type d | head -20) || true
+            du -sh "${DATASET_PATH}" || true
+
+            # Translate model_variant / train_mode to CLI flags.
+            EXTRA_FLAGS=()
+            case "${MODEL_VARIANT}" in
+              pi05) EXTRA_FLAGS+=(--pi05) ;;
+              pi0)  EXTRA_FLAGS+=(--pi0)  ;;
+              *)    echo "unknown MODEL_VARIANT=${MODEL_VARIANT}" >&2; exit 2 ;;
+            esac
+            case "${TRAIN_MODE}" in
+              lora) EXTRA_FLAGS+=(--lora) ;;
+              full) ;;
+              *)    echo "unknown TRAIN_MODE=${TRAIN_MODE}" >&2; exit 2 ;;
+            esac
+            if [[ -n "${DEFAULT_PROMPT:-}" ]]; then
+              EXTRA_FLAGS+=(--default-prompt "${DEFAULT_PROMPT}")
+            fi
+            # Resume from last checkpoint if RESUME=true; otherwise overwrite.
+            if [[ "${RESUME:-false}" == "true" ]]; then
+              echo "   resuming from last checkpoint"
+              EXTRA_FLAGS+=(--resume)
+            else
+              EXTRA_FLAGS+=(--overwrite)
+            fi
+
+            echo "--- launching training ---"
+            python "${OPENPI_DIR}/train_openpi_ur5e_dual_arm.py" \
+              --dataset       "${DATASET_PATH}" \
+              --output        "${OUTPUT_DIR}" \
+              --openpi-dir    "${OPENPI_DIR}" \
+              --exp-name      "${EXP_NAME}" \
+              --max-steps     "${MAX_STEPS}" \
+              --save-interval "${SAVE_INTERVAL}" \
+              --batch-size    "${BATCH_SIZE}" \
+              --num-workers   "${NUM_WORKERS}" \
+              --fsdp-devices  "${FSDP_DEVICES}" \
+              "${EXTRA_FLAGS[@]}"
+
+            echo "--- training complete; artifacts under ${OUTPUT_DIR} ---"
+            du -sh "${OUTPUT_DIR}" || true
+
+            # Persist off the pod's writable layer onto the NFS share.
+            PERSIST_ROOT="/outputs/${WORKFLOW_NAME}"
+            case "${OUTPUT_DIR}" in
+              /outputs/*)
+                echo "--- output already on NFS (${OUTPUT_DIR}); skipping copy ---"
+                ;;
+              *)
+                if [[ -d /outputs ]]; then
+                  echo "--- copying ${OUTPUT_DIR} -> ${PERSIST_ROOT} (NFS) ---"
+                  mkdir -p "${PERSIST_ROOT}"
+                  cp -a "${OUTPUT_DIR}/." "${PERSIST_ROOT}/"
+                else
+                  echo "WARN: /outputs missing; checkpoints will be lost" >&2
+                fi
+                ;;
+            esac
+
+        # ----------------------------------------------------------------
+        # Policy module — body inlined by submit-osmo-openpi-training.sh.
+        # ----------------------------------------------------------------
+        - path: /tmp/openpi_ur5e_dual_arm_policy.py
+          contents: |
+__POLICY_SCRIPT__
+
+        # ----------------------------------------------------------------
+        # Training driver — body inlined by submit-osmo-openpi-training.sh.
+        # ----------------------------------------------------------------
+        - path: /tmp/train_openpi_ur5e_dual_arm.py
+          contents: |
+__TRAIN_SCRIPT__
+
+# ------------------------------------------------------------------------------
+# Tunables. Override via `osmo workflow submit --set k=v` or the submit script's
+# env vars (see `submit-osmo-openpi-training.sh --help`).
+# ------------------------------------------------------------------------------
+default-values:
+  workflow_name: openpi-pi05-ur5e-dual-train
+  exp_name: ur5e_dual_run
+  dataset_name: combined-sessions
+  dataset_mount_path: /tmp/combined-sessions
+  dataset_s3_uri: s3://osmo/raw/combined-sessions/
+  s3_endpoint_url: http://localstack-s3.osmo:4566
+  s3_access_key: test
+  s3_secret_key: test
+  output_dir: ""
+  openpi_ref: main
+  model_variant: pi05      # pi05 | pi0
+  train_mode: lora         # lora | full   (lora ~22GB VRAM, full ~70GB)
+  max_steps: 100000
+  save_interval: 25000
+  batch_size: 16            # 16 for gpu_4090 (24GB); 32 for gpu_5090 (32GB)
+  num_workers: 4
+  fsdp_devices: 1
+  default_prompt: ""
+  cpu: 12
+  memory: 48Gi
+  storage: 128Gi
+  gpu: 1
+  # NVIDIA NGC PyTorch image: Python 3.12, PyTorch 2.7.0a0 with sm_120
+  # (RTX 5090 Blackwell) support. openpi installs JAX with CUDA plugins on top.
+  image: nvcr.io/nvidia/pytorch:25.04-py3
+  hf_token: ""
+  wandb_api_key: ""
+  wandb_project: openpi-ur10e
+  wandb_disabled: "true"
+  # Platform selects the GPU node type. Available: gpu_4090 (24 GB),
+  # gpu_5090 (32 GB).
+  platform: gpu_5090
+  resume: "false"

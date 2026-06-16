@@ -1,0 +1,27 @@
+{
+  "spec": {
+    "nodeSelector": {
+      "nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-5090"
+    },
+    "volumes": [
+      {
+        "name": "dshm",
+        "emptyDir": {
+          "medium": "Memory",
+          "sizeLimit": "16Gi"
+        }
+      }
+    ],
+    "containers": [
+      {
+        "name": "{{USER_CONTAINER_NAME}}",
+        "volumeMounts": [
+          {
+            "name": "dshm",
+            "mountPath": "/dev/shm"
+          }
+        ]
+      }
+    ]
+  }
+}
