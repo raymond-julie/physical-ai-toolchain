@@ -1,0 +1,6 @@
+# Runtime dependencies for the LeRobot dataset convert/merge CLIs.
+# Install into a standalone virtualenv: python -m pip install -r requirements.txt
+numpy>=1.26
+pyarrow>=15.0
+pandas>=2.0               # convert_lerobot_v3_to_v2 episode metadata frames
+imageio-ffmpeg>=0.5       # bundled ffmpeg for per-episode video slicing (imported as imageio_ffmpeg)
