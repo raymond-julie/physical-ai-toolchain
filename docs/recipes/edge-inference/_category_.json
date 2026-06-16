@@ -1,0 +1,8 @@
+{
+  "label": "Edge Inference",
+  "position": 3,
+  "link": {
+    "type": "doc",
+    "id": "recipes/edge-inference/README"
+  }
+}
