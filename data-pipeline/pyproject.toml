@@ -28,6 +28,11 @@ omit = [
     "**/conftest.py",
     "**/__init__.py",
     "**/tests/**",
+    # UR capture subtrees are self-contained components with their own tests
+    # (run from each component directory); excluded from the config-model gate.
+    "capture/ur/**",
+    "capture/camera_streamer/**",
+    "capture/upload/**",
 ]
 
 [tool.coverage.report]

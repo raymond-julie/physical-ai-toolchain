@@ -77,6 +77,9 @@ omit = [
     "sil/monitor_checkpoints.py",
     "sil/play.py",
     "sil/play_policy.py",
+    # GPU-only VLA offline evaluators; exercised on a CUDA host, not in unit tests.
+    "sil/eval_gr00t_dual_arm.py",
+    "sil/eval_openpi_ur5e_dual_arm.py",
 ]
 
 [tool.coverage.report]
