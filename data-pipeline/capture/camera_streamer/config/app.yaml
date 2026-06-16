@@ -1,0 +1,13 @@
+# Optional settings overlay for camera_streamer.
+#
+# Pass with: --app-config config/app.yaml
+# Everything here is optional; CLI flags override these values.
+
+server:
+  host: 0.0.0.0   # bind on all interfaces so the LAN can reach the streams
+  port: 8000
+
+stream:
+  jpeg_quality: 80   # 1-100
+  fps: 30            # cap on streamed frame rate (camera may capture faster)
+  max_width: 1280    # downscale frames wider than this before encoding (0 = off)

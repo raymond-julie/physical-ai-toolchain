@@ -1,0 +1,25 @@
+# Pip-installable Python dependencies for this workspace.
+# Install after ROS 2 is already installed (humble on 22.04, jazzy on 24.04):
+#   pip install -r requirements.txt
+#
+# ROS 2 packages used by this repo are not installed with pip and must come
+# from the system ROS install: rclpy, sensor_msgs, std_msgs, ur_msgs, launch,
+# launch_ros, ros2 bag, and OpenCV.
+
+setuptools
+ur_rtde
+nats-py==2.7.2
+flask
+flask-socketio
+# numpy version: on ROS 2 Humble cv_bridge is built against NumPy 1.x; on
+# Jazzy (Ubuntu 24.04) it is built against NumPy 2.x. The install_dependencies.sh
+# helper applies the right constraint based on $ROS_DISTRO. Leave numpy
+# unconstrained here so this file works on both distros.
+numpy
+pandas
+opencv-python
+lerobot
+# Nova WebRTC camera bridge (used when --camera-source nova). aiortc pulls
+# in PyAV for VP8/H264 decode + numpy frame access.
+aiortc
+av

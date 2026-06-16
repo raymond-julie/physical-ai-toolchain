@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Episode Recorder</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <main>
+    <h1>Episode Recorder</h1>
+    <p class="hint">Fallback control panel — equivalent to pressing the physical button.</p>
+
+    {% if cameras %}
+    <section class="cameras top">
+      <h2>Live cameras</h2>
+      <div class="camera-grid">
+        {% for cam in cameras %}
+        <figure class="camera" data-index="{{ loop.index0 }}">
+          <div class="camera-frame">
+            <img src="/api/stream/{{ loop.index0 }}" alt="{{ cam.topic }}">
+            <span class="rec-badge">REC</span>
+            <span class="live-badge" data-state="unknown">offline</span>
+          </div>
+          <figcaption><code>{{ cam.topic }}</code></figcaption>
+        </figure>
+        {% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <p class="hint">No cameras configured. Set <code>image_topics</code> on the <code>trigger_gui</code> node to see live previews.</p>
+    {% endif %}
+
+    <div id="status" class="status off">
+      <span class="dot"></span>
+      <span id="state-text">IDLE</span>
+    </div>
+
+    <button id="toggle" class="record">Record</button>
+
+    <p class="hint topic">Topic: <code>/recorder/active</code></p>
+
+    <section id="recorder-stats" class="stats">
+      <h2>Recorder</h2>
+      <div class="tile-grid">
+        <div class="tile"><span class="tile-label">Episodes</span>
+          <span class="tile-value" id="stat-episodes">—</span></div>
+        <div class="tile"><span class="tile-label">Frames (current)</span>
+          <span class="tile-value" id="stat-frames">—</span></div>
+        <div class="tile"><span class="tile-label">FPS</span>
+          <span class="tile-value" id="stat-fps">—</span></div>
+        <div class="tile"><span class="tile-label">Saving</span>
+          <span class="tile-value" id="stat-saving">—</span></div>
+      </div>
+      <p class="hint mono" id="stat-session">session: —</p>
+    </section>
+
+    {% if robots %}
+    <section class="robots">
+      <h2>Robots</h2>
+      <div class="tile-grid robot-grid">
+        {% for ns in robots %}
+        <article class="robot-tile" data-ns="{{ ns }}">
+          <header>
+            <span class="robot-name">{{ ns }}</span>
+            <span class="live-badge" data-state="unknown">offline</span>
+          </header>
+          <div class="kv"><span class="k">joints</span>
+            <code class="v mono joints">—</code></div>
+          <div class="kv"><span class="k">gripper</span>
+            <code class="v mono gripper">—</code></div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

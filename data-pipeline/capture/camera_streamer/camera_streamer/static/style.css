@@ -1,0 +1,135 @@
+:root {
+  --bg: #14161a;
+  --card: #1d2026;
+  --line: #2a2e36;
+  --text: #e7e9ee;
+  --muted: #9aa0ac;
+  --accent: #4ea1ff;
+  --ok: #3ecf8e;
+  --down: #d9b25b;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+header {
+  padding: 24px 28px 8px;
+}
+
+header h1 { margin: 0 0 4px; font-size: 1.5rem; }
+header .sub { margin: 0; color: var(--muted); }
+
+.empty {
+  margin: 24px 28px;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 18px;
+  padding: 18px 28px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.card-head h2 { margin: 0; font-size: 1.05rem; }
+
+.badge {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+.badge.ok { background: rgba(62, 207, 142, 0.16); color: var(--ok); }
+.badge.down { background: rgba(217, 178, 91, 0.16); color: var(--down); }
+
+.frame {
+  display: block;
+  background: #000;
+  aspect-ratio: 16 / 9;
+}
+.frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 0;
+  padding: 12px 14px 4px;
+  font-size: 0.85rem;
+}
+.meta dt { color: var(--muted); }
+.meta dd { margin: 0; word-break: break-all; }
+
+.links { padding: 10px 14px 16px; }
+.links label {
+  display: block;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.copy-row { display: flex; gap: 8px; }
+.copy-row input {
+  flex: 1;
+  background: #0f1115;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 7px 9px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+.copy-row button {
+  background: var(--accent);
+  color: #08111f;
+  border: none;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actions { display: flex; gap: 14px; margin-top: 10px; }
+.actions a { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
+.actions a:hover { text-decoration: underline; }
+
+footer {
+  padding: 8px 28px 28px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+footer a { color: var(--accent); }

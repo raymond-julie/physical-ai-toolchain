@@ -1,0 +1,26 @@
+services:
+  camera-streamer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # This Jetson's kernel lacks the iptables 'raw' table the default Docker
+      # bridge needs, so build on the host network.
+      network: host
+    image: ur-camera-streamer:latest
+    container_name: ur-camera-streamer
+    restart: unless-stopped
+
+    # Host networking: makes the MJPEG streams reachable from other machines on
+    # the LAN and lets the service print share URLs with the host's real IP.
+    network_mode: host
+
+    # The Orbbec SDK talks to the GMSL cameras through V4L2 device nodes. The
+    # simplest, most reliable passthrough on Jetson is to share /dev and grant
+    # the extra capabilities V4L2/USB enumeration needs. If you prefer least
+    # privilege, replace this with an explicit `devices:` list (see README).
+    privileged: true
+    volumes:
+      - /dev:/dev
+
+    # Override the default CMD here if you need a different port / settings.
+    command: ["--port", "8000"]

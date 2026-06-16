@@ -1,0 +1,41 @@
+# UrDualRecorder Python dependencies.
+# Install into a venv on the lab workstation:
+#   python3 -m venv --system-site-packages .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+#
+# NOTE on lerobot: this recorder targets the LeRobot dataset v2.1 format
+# (CODEBASE_VERSION "v2.1"), which is the format NVIDIA Isaac-GR00T fine-tuning
+# expects. That format is produced by lerobot==0.3.3; lerobot>=0.4.0 switched
+# to the v3.0 aggregated/streaming format which GR00T does NOT read.
+# On the Jetson GPU box, lerobot 0.3.3 + datasets 3.6.0 are installed into the
+# recorder's own venv (created with --system-site-packages and installed with
+# --no-deps) so they SHADOW the system datasets 4.x WITHOUT downgrading the
+# hard-won GPU torch/torchvision build:
+#   pip install --no-deps "lerobot==0.3.3" "datasets==3.6.0"
+
+# Core
+pyyaml
+numpy
+opencv-python
+
+# Robot control (Universal Robots RTDE)
+ur_rtde
+
+# Recording — pin to the last v2.1 (GR00T-compatible) writer.
+# On the GPU box install with --no-deps (see header) to protect torch/datasets.
+lerobot==0.3.3
+datasets==3.6.0
+
+# Web dashboard
+flask
+
+# USB foot-pedal record toggle (reads the pedal's HID keyboard input device).
+evdev
+
+# Cameras (Orbbec). Install the wheel matching your Python/OS from
+# https://github.com/orbbec/pyorbbecsdk — pip name may differ per build.
+# pyorbbecsdk2
+
+# Optional: official UR RTDE client, used as a fallback to read tool analog
+# inputs when the installed ur_rtde build does not expose them.
+# rtde

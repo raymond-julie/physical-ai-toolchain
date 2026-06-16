@@ -1,0 +1,11 @@
+target/
+*.urcap
+*.iml
+.idea/
+.classpath
+.project
+.settings/
+
+# Vendored UR URCap SDK (external download; point build.sh at it via URCAP_SDK_DIR)
+sdk/
+sdk-*.zip

@@ -1,0 +1,12 @@
+# Keep recordings, venvs, and build cruft out of the image build context.
+.venv/
+__pycache__/
+*.pyc
+*.log
+recordings*/
+Log/
+
+# The vendored SDK is staged on demand by docker/stage-orbbec.sh; ignore
+# everything under vendor EXCEPT that staged orbbec payload.
+docker/vendor/*
+!docker/vendor/orbbec/

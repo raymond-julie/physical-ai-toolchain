@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.trainmybot.camerastream</groupId>
+    <artifactId>camerastream</artifactId>
+    <version>1.1.0</version>
+    <packaging>pom</packaging>
+
+    <name>Camera Stream URCap</name>
+    <description>
+        PolyScope 5 (e-Series) URCap that displays the live MJPEG feed published
+        by UrCameraStreamer directly on the teach pendant.
+    </description>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>1.8</maven.compiler.source>
+        <maven.compiler.target>1.8</maven.compiler.target>
+        <!--
+            UR URCap API version. The matching jar (com.ur.urcap:api) ships in
+            the SDK's artifacts/ folder, not on Maven Central. 1.3.0 is the
+            oldest version exposing everything this URCap uses, giving the widest
+            PolyScope 5.x compatibility (installs on 5.25 and earlier e-Series).
+            See README.md.
+        -->
+        <api.version>1.3.0</api.version>
+    </properties>
+
+    <modules>
+        <module>com.trainmybot.camerastream.impl</module>
+    </modules>
+</project>

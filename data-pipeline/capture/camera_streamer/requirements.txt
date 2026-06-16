@@ -1,0 +1,8 @@
+flask>=2.0
+opencv-python-headless>=4.5
+numpy>=1.21
+PyYAML>=5.4
+
+# Orbbec SDK (pyorbbecsdk) is NOT on PyPI. Build it from source for your
+# platform; see the README. Without it the service falls back to a synthetic
+# test pattern so the wiring can still be verified.

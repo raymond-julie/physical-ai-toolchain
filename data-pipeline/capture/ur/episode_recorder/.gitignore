@@ -1,0 +1,15 @@
+# Local recorder output
+recordings_lerobot/
+
+# Per-component log files written next to the launcher
+*.log
+
+# Nova credentials / env overrides (template lives in nova.example.env)
+nova.env
+
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/

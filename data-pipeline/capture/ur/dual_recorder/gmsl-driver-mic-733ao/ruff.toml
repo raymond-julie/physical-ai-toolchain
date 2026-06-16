@@ -1,0 +1,8 @@
+# This host-side GMSL tooling deliberately swallows hardware, sysfs, and
+# subprocess errors so a single camera fault never crashes the watchdog. Enable
+# flake8-blind-except (BLE) on top of the root ruleset so the intentional
+# `# noqa: BLE001` markers stay meaningful instead of tripping RUF100.
+extend = "../../../../../pyproject.toml"
+
+[lint]
+extend-select = ["BLE"]

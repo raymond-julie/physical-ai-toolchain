@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UR Recorder</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     HEADER
+     ═══════════════════════════════════════════════════════════════════ -->
+<header id="header">
+    <div class="header-left">
+        <h1>🤖 UR Recorder</h1>
+    </div>
+    <div class="header-right">
+        <span id="connection-badge" class="badge badge-off">● Disconnected</span>
+        <button id="btn-settings" class="icon-btn" title="Settings">⚙</button>
+    </div>
+</header>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     TOP ROW — Status / Robot State / Camera
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="top-row">
+
+    <!-- Connection Status -->
+    <div class="panel" id="panel-connections">
+        <h2>Connections</h2>
+        <div class="conn-grid">
+            <div class="conn-item">
+                <span id="conn-source" class="dot dot-off"></span>
+                <span>Source Robot</span>
+                <span class="conn-ip">configured</span>
+            </div>
+            <div class="conn-item">
+                <span id="conn-dest" class="dot dot-off"></span>
+                <span>Dest Robot</span>
+                <span class="conn-ip">configured</span>
+            </div>
+            <div class="conn-item">
+                <span id="conn-src-grip" class="dot dot-off"></span>
+                <span>Source Gripper</span>
+            </div>
+            <div class="conn-item">
+                <span id="conn-dst-grip" class="dot dot-off"></span>
+                <span>Dest Gripper</span>
+            </div>
+            <div class="conn-item">
+                <span id="conn-camera" class="dot dot-off"></span>
+                <span id="conn-camera-label">Camera 1</span>
+            </div>
+            <div class="conn-item">
+                <span id="conn-camera2" class="dot dot-off"></span>
+                <span id="conn-camera2-label">Camera 2</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Robot State -->
+    <div class="panel" id="panel-robot">
+        <h2>Robot State</h2>
+        <div class="state-section">
+            <h3>Source Joints</h3>
+            <div id="source-joints" class="joint-values">—</div>
+        </div>
+        <div class="state-section">
+            <h3>Dest Joints</h3>
+            <div id="dest-joints" class="joint-values">—</div>
+        </div>
+        <div class="state-row">
+            <div>
+                <span class="label">Source Gripper:</span>
+                <span id="src-grip-val">—</span>
+            </div>
+            <div>
+                <span class="label">Dest Gripper:</span>
+                <span id="dst-grip-val">—</span>
+            </div>
+        </div>
+        <div class="state-row io-row">
+            <span class="label">DI0:</span>
+            <span id="di0-val" class="io-badge io-off">OFF</span>
+            <span class="label">DI1:</span>
+            <span id="di1-val" class="io-badge io-off">OFF</span>
+        </div>
+    </div>
+
+    <!-- Camera Preview -->
+    <div class="panel" id="panel-camera">
+        <h2>Camera Preview</h2>
+        <div class="camera-grid">
+            <div class="camera-cell">
+                <div class="camera-label">Camera 1</div>
+                <div class="camera-container">
+                    <img id="camera-feed" src="/video/color" alt="Camera 1">
+                </div>
+                <div class="camera-toggle">
+                    <button class="cam-btn active" data-target="camera-feed" data-src="/video/color">RGB</button>
+                    <button class="cam-btn" data-target="camera-feed" data-src="/video/depth">Depth</button>
+                </div>
+            </div>
+            <div class="camera-cell">
+                <div class="camera-label">Camera 2</div>
+                <div class="camera-container">
+                    <img id="camera-feed2" src="/video/color2" alt="Camera 2">
+                </div>
+                <div class="camera-toggle">
+                    <button class="cam-btn active" data-target="camera-feed2" data-src="/video/color2">RGB</button>
+                    <button class="cam-btn" data-target="camera-feed2" data-src="/video/depth2">Depth</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     MIDDLE — State Machine + Controls
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="mid-row">
+    <div class="panel panel-wide" id="panel-controls">
+
+        <!-- State indicator -->
+        <div class="state-indicator">
+            <span class="state-pill" id="pill-waiting">WAITING</span>
+            <span class="state-pill" id="pill-aligning">ALIGNING</span>
+            <span class="state-pill" id="pill-idle">IDLE</span>
+            <span class="state-pill" id="pill-mirroring">MIRRORING</span>
+            <span class="state-pill" id="pill-returning">RETURNING</span>
+        </div>
+
+        <!-- Control buttons -->
+        <div class="controls-row">
+            <button id="btn-start" class="ctrl-btn btn-start" title="Start mirroring + recording">▶ START</button>
+            <button id="btn-stop" class="ctrl-btn btn-stop" title="Stop mirroring + recording">⏹ STOP</button>
+        </div>
+
+        <!-- Recording info -->
+        <div id="recording-info" class="recording-info hidden">
+            <span class="rec-dot">🔴</span>
+            <span>RECORDING: </span>
+            <span id="rec-name">—</span>
+            <span class="rec-timer">⏱ <span id="rec-elapsed">0.0</span>s</span>
+        </div>
+
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     BOTTOM — Recordings Table
+     ═══════════════════════════════════════════════════════════════════ -->
+<section class="bottom-row">
+    <div class="panel panel-wide" id="panel-recordings">
+        <div class="panel-header">
+            <h2>Recordings</h2>
+            <div>
+                <button id="btn-refresh" class="icon-btn" title="Refresh">🔄</button>
+            </div>
+        </div>
+
+        <table id="recordings-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Duration</th>
+                    <th>Messages</th>
+                    <th>Topics</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="recordings-body">
+                <tr><td colspan="6" class="empty-row">Loading...</td></tr>
+            </tbody>
+        </table>
+
+        <!-- Recording detail (shown when clicking a row) -->
+        <div id="recording-detail" class="recording-detail hidden">
+            <h3>📋 <span id="detail-name">—</span></h3>
+            <div id="detail-topics" class="detail-topics"></div>
+            <div class="detail-actions">
+                <button id="btn-playback" class="ctrl-btn btn-play">▶ Play</button>
+                <button id="btn-delete" class="ctrl-btn btn-delete">🗑 Delete</button>
+            </div>
+        </div>
+
+        <!-- Playback viewer -->
+        <div id="playback-viewer" class="playback-viewer hidden">
+            <div class="playback-header">
+                <h3>▶ Playback: <span id="playback-name">—</span></h3>
+                <button id="btn-close-playback" class="icon-btn">✕</button>
+            </div>
+            <img id="playback-feed" src="" alt="Playback">
+        </div>
+
+    </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     SETTINGS MODAL
+     ═══════════════════════════════════════════════════════════════════ -->
+<div id="settings-overlay" class="overlay hidden">
+    <div class="modal">
+        <h2>⚙ Settings</h2>
+
+        <div class="settings-grid">
+            <div class="settings-section">
+                <h3>Network</h3>
+                <label>Source IP <input id="set-source-ip" type="text"></label>
+                <label>Dest IP <input id="set-dest-ip" type="text"></label>
+                <label>Gripper Port <input id="set-gripper-port" type="number"></label>
+            </div>
+            <div class="settings-section">
+                <h3>Recording</h3>
+                <label>Gap Multiplier <input id="set-gap-mult" type="number" step="0.1"></label>
+                <label>Min Gap (ms) <input id="set-min-gap" type="number" step="10"></label>
+                <label>Grace Period (s) <input id="set-grace" type="number" step="0.1"></label>
+            </div>
+            <div class="settings-section">
+                <h3>Motion</h3>
+                <label>Catch-up Speed (rad/s) <input id="set-catchup" type="number" step="0.01"></label>
+                <label>Mode
+                    <select id="set-mode">
+                        <option value="home">Home</option>
+                        <option value="no-home">No Home</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div class="modal-buttons">
+            <button id="btn-save-settings" class="ctrl-btn btn-start">Save</button>
+            <button id="btn-cancel-settings" class="ctrl-btn btn-stop">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════
+     MOTION CONFIRMATION MODAL
+     ═════════════════════════════════════════════════════════════════ -->
+<div id="motion-confirm-overlay" class="overlay">
+    <div class="modal motion-confirm-modal">
+        <div class="confirm-icon">⚠️</div>
+        <h2>Enable Robot Motion?</h2>
+        <p class="confirm-subtitle">The destination robot will begin moving once confirmed.</p>
+
+        <div class="confirm-checklist">
+            <label class="confirm-check">
+                <input type="checkbox" id="chk-clear"> Workspace is clear of people and obstacles
+            </label>
+            <label class="confirm-check">
+                <input type="checkbox" id="chk-estop"> E-stop is within reach
+            </label>
+            <label class="confirm-check">
+                <input type="checkbox" id="chk-brakes"> Destination robot brakes are released
+            </label>
+        </div>
+
+        <div class="confirm-info">
+            <div>Source: <strong>configured source robot</strong></div>
+            <div>Destination: <strong>configured destination robot</strong></div>
+        </div>
+
+        <div class="confirm-option">
+            <label class="confirm-toggle">
+                <span class="toggle-label">Go to Home position first</span>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="chk-use-home">
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+            <p class="confirm-option-hint" id="use-home-hint">Robot will stay in place and mirror directly on Start.</p>
+        </div>
+
+        <div class="confirm-option">
+            <label class="confirm-toggle">
+                <span class="toggle-label">Show depth camera footage</span>
+                <div class="toggle-switch">
+                    <input type="checkbox" id="chk-use-depth">
+                    <span class="toggle-slider"></span>
+                </div>
+            </label>
+            <p class="confirm-option-hint" id="use-depth-hint">Depth previews hidden. Recording follows the launch flag (--depth / --no-depth).</p>
+        </div>
+
+        <div class="modal-buttons">
+            <button id="btn-confirm-motion" class="ctrl-btn btn-confirm" disabled>🔓 Enable Motion</button>
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+
+</body>
+</html>

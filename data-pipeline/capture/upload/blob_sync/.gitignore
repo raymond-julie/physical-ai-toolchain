@@ -1,0 +1,6 @@
+# Local secrets / runtime
+config.yaml
+.venv/
+venv/
+__pycache__/
+*.pyc

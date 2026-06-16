@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UrDualRecorder</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>UrDualRecorder — Dual-Arm Recorder</h1>
+    <div class="actions">
+      <label class="defer-toggle" title="Hold recorded episodes in a raw state and encode them later on demand">
+        <input type="checkbox" id="defer-encoding" />
+        Defer encoding
+      </label>
+      <button id="encode-btn" class="btn encode" disabled>Encode</button>
+      <button id="record-btn" class="btn record">Record</button>
+    </div>
+  </header>
+
+  <section id="banner" class="banner hidden"></section>
+
+  <main>
+    <section class="panel">
+      <h2>Status</h2>
+      <div id="global-status" class="status-grid"></div>
+      <div class="ep-header">
+        <h3 class="ep-title">Episode History</h3>
+        <label class="ep-autoscroll">
+          <input type="checkbox" id="ep-autoscroll" checked />
+          Auto-scroll
+        </label>
+      </div>
+      <div id="episode-list" class="episode-list"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Follower Arms</h2>
+      <div id="arms"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Joint Positions <small class="muted">(history)</small></h2>
+      <div id="joint-charts" class="chart-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Cameras</h2>
+      <div id="cameras" class="camera-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Foot Pedals &amp; Storage</h2>
+      <div id="pedals" class="pedal-grid"></div>
+      <div class="disk-bar" title="Disk usage (green = recordings_lerobot)">
+        <div id="disk-fill" class="disk-fill"></div>
+        <div id="rec-fill" class="disk-fill rec-fill"></div>
+        <span id="disk-label" class="disk-label">Disk: —</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

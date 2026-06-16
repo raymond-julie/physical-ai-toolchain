@@ -1,0 +1,43 @@
+# Example multi-robot configuration for the launcher.
+#
+# The launcher reads this when invoked with --config <path>. CLI flags
+# are still respected and override the values here.
+#
+# Each robot needs:
+#   name           — short identifier, becomes ROS topic namespace
+#   ip             — robot controller IP
+#   robot_driver   — see `episode_recorder.drivers` registry
+#                    (default registered drivers: ur_rtde)
+#   gripper_driver — see `episode_recorder.drivers` registry
+#                    (default registered drivers: robotiq_socket, none)
+#   trigger        — true for the robot whose DI0 toggles recording;
+#                    at most one robot should be marked trigger.
+
+robots:
+  - name: robot1
+    ip: 192.168.1.80
+    robot_driver: ur_rtde
+    gripper_driver: robotiq_socket
+    trigger: true
+
+  - name: robot2
+    ip: 192.168.1.90
+    robot_driver: ur_rtde
+    gripper_driver: robotiq_socket
+    trigger: false
+
+cameras:
+  # Each entry becomes one realsense2_camera launch.
+  - name: camera1
+    serial: ""        # empty = auto-detect by USB port
+  - name: camera2
+    serial: ""
+
+recorder:
+  fps: 15
+  record_depth: false
+  image_height: 480
+  image_width: 640
+  repo_id: local/ur5_dual
+  task: ur5_dual_episode
+  root: ./recordings_lerobot

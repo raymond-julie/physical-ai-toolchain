@@ -1,0 +1,10 @@
+{
+  "source_ip": "192.168.1.80",
+  "dest_ip": "192.168.1.90",
+  "gripper_port": 63352,
+  "gap_multiplier": 10,
+  "min_gap_ms": 500,
+  "grace_period": 2,
+  "catch_up_speed": 0.1,
+  "mode": "no-home"
+}

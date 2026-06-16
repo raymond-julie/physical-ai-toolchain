@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.trainmybot.camerastream</groupId>
+        <artifactId>camerastream</artifactId>
+        <version>1.1.0</version>
+    </parent>
+
+    <artifactId>com.trainmybot.camerastream.impl</artifactId>
+    <packaging>bundle</packaging>
+
+    <name>Camera Stream URCap :: Implementation</name>
+
+    <properties>
+        <!--****************** URCAP META DATA ******************-->
+        <urcap.symbolicname>com.trainmybot.camerastream.impl</urcap.symbolicname>
+        <urcap.vendor>TrainMyBot</urcap.vendor>
+        <urcap.contactAddress>support@trainmybot.local</urcap.contactAddress>
+        <urcap.copyright>Copyright (C) ${copyright.year} TrainMyBot. All Rights Reserved</urcap.copyright>
+        <urcap.description>Live camera MJPEG stream on the teach pendant.</urcap.description>
+        <urcap.licenseType>Proprietary</urcap.licenseType>
+        <!-- Target: PolyScope 5.x e-Series (e.g. 5.25). Not CB3 (PolyScope 3.x). -->
+        <urcap.compatibility.CB3>false</urcap.compatibility.CB3>
+        <urcap.compatibility.eSeries>true</urcap.compatibility.eSeries>
+
+        <!-- BundleActivator registered by the OSGi runtime -->
+        <urcap.bundleActivator>com.trainmybot.camerastream.impl.Activator</urcap.bundleActivator>
+
+        <copyright.year>${maven.build.timestamp}</copyright.year>
+        <maven.build.timestamp.format>yyyy</maven.build.timestamp.format>
+    </properties>
+
+    <dependencies>
+        <!-- Provided by PolyScope at runtime -->
+        <dependency>
+            <groupId>org.osgi</groupId>
+            <artifactId>org.osgi.core</artifactId>
+            <version>4.3.0</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.ur.urcap</groupId>
+            <artifactId>api</artifactId>
+            <version>${api.version}</version>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+
+            <!-- Package the compiled classes into an OSGi bundle -->
+            <plugin>
+                <groupId>org.apache.felix</groupId>
+                <artifactId>maven-bundle-plugin</artifactId>
+                <version>5.1.9</version>
+                <extensions>true</extensions>
+                <executions>
+                    <execution>
+                        <id>bundle-urcap</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>bundle</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <instructions>
+                        <!--***** DO NOT MODIFY THE ENTRIES OF THIS SECTION *****-->
+                        <Bundle-Category>URCap</Bundle-Category>
+                        <Bundle-Activator>${urcap.bundleActivator}</Bundle-Activator>
+                        <Bundle-Vendor>${urcap.vendor}</Bundle-Vendor>
+                        <Bundle-ContactAddress>${urcap.contactAddress}</Bundle-ContactAddress>
+                        <Bundle-Copyright>${urcap.copyright}</Bundle-Copyright>
+                        <Bundle-LicenseType>${urcap.licenseType}</Bundle-LicenseType>
+                        <Bundle-Description>${urcap.description}</Bundle-Description>
+                        <Bundle-SymbolicName>${urcap.symbolicname}</Bundle-SymbolicName>
+                        <URCapCompatibility-CB3>${urcap.compatibility.CB3}</URCapCompatibility-CB3>
+                        <URCapCompatibility-eSeries>${urcap.compatibility.eSeries}</URCapCompatibility-eSeries>
+                        <!--*****************************************************-->
+                        <Import-Package>
+                            com.ur.urcap.api*,
+                            *
+                        </Import-Package>
+                    </instructions>
+                </configuration>
+            </plugin>
+
+            <!-- Transform the packaged .jar into a .urcap file -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>package-urcap</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <configuration>
+                            <executable>cp</executable>
+                            <commandlineArgs>target/${project.build.finalName}.jar target/${project.build.finalName}.urcap</commandlineArgs>
+                            <workingDirectory>.</workingDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

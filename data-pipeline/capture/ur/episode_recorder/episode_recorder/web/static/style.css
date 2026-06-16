@@ -1,0 +1,336 @@
+:root {
+  --bg: #0f1115;
+  --fg: #e6e6e6;
+  --muted: #8a8f99;
+  --idle: #5cb85c;
+  --rec: #d9534f;
+  --accent: #5a8dee;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+main {
+  max-width: 90rem;
+  width: 96%;
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+h1 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.6rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin: 0.25rem 0 1.5rem;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  background: #1a1d24;
+  font-size: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.status .dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.status.off .dot { background: var(--idle); }
+.status.off #state-text { color: var(--idle); }
+
+.status.on .dot {
+  background: var(--rec);
+  box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.6);
+  animation: pulse 1.2s infinite;
+}
+.status.on #state-text { color: var(--rec); }
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(217, 83, 79, 0.7); }
+  70%  { box-shadow: 0 0 0 12px rgba(217, 83, 79, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(217, 83, 79, 0); }
+}
+
+button.record {
+  display: block;
+  margin: 0 auto;
+  font-size: 1.4rem;
+  font-weight: 600;
+  padding: 0.9rem 2.5rem;
+  border-radius: 999px;
+  border: none;
+  background: var(--rec);
+  color: white;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: transform 0.05s, background 0.15s;
+}
+
+button.record:hover { background: #c8403c; }
+button.record:active { transform: scale(0.97); }
+
+button.record.recording {
+  background: #444;
+}
+button.record.recording:hover { background: #555; }
+
+.topic code {
+  background: #1a1d24;
+  color: var(--accent);
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+}
+
+/* ── Camera previews ───────────────────────────────────────── */
+
+.cameras {
+  margin-top: 2.5rem;
+  text-align: left;
+}
+
+/* When the live-camera section is rendered at the top of the page,
+   shrink the gap so it sits right under the title. */
+.cameras.top {
+  margin-top: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.cameras h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem 0;
+  text-align: center;
+}
+
+.camera-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 0.75rem;
+}
+
+figure.camera {
+  margin: 0;
+  background: #1a1d24;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #232733;
+}
+
+.camera-frame {
+  position: relative;
+  background: #000;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.camera-frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.camera-frame .rec-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  background: var(--rec);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  display: none;
+}
+
+body.recording .camera-frame .rec-badge {
+  display: inline-block;
+  animation: pulse 1.2s infinite;
+}
+
+.camera-frame .live-badge {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: #2a2f3a;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.camera-frame .live-badge[data-state="live"] {
+  background: rgba(92, 184, 92, 0.2);
+  color: var(--idle);
+}
+
+.camera-frame .live-badge[data-state="stale"] {
+  background: rgba(217, 83, 79, 0.2);
+  color: var(--rec);
+}
+
+figcaption {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: #14171d;
+  border-top: 1px solid #232733;
+  word-break: break-all;
+}
+
+figcaption code {
+  color: var(--accent);
+  background: transparent;
+  padding: 0;
+}
+
+/* ── Stats + Robot tiles ───────────────────────────────────── */
+
+.stats, .robots {
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.stats h2, .robots h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem 0;
+  text-align: center;
+}
+
+.tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 0.75rem;
+}
+
+.robot-grid {
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+}
+
+.tile {
+  background: #1a1d24;
+  border: 1px solid #232733;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.tile-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.tile-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--fg);
+}
+
+.robot-tile {
+  background: #1a1d24;
+  border: 1px solid #232733;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.robot-tile header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.robot-tile .robot-name {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.robot-tile .kv {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.robot-tile .k {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  min-width: 4.5rem;
+}
+
+.robot-tile .v {
+  font-size: 0.85rem;
+  color: var(--fg);
+  word-break: break-all;
+}
+
+.robot-tile .live-badge {
+  background: #2a2f3a;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.robot-tile .live-badge[data-state="live"] {
+  background: rgba(92, 184, 92, 0.2);
+  color: var(--idle);
+}
+
+.robot-tile .live-badge[data-state="stale"] {
+  background: rgba(217, 83, 79, 0.2);
+  color: var(--rec);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+#stat-session {
+  word-break: break-all;
+  font-size: 0.75rem;
+}

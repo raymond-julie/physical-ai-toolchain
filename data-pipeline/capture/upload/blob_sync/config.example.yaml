@@ -1,0 +1,31 @@
+# blob_sync configuration — copy to config.yaml and fill in your values.
+#
+# config.yaml is git-ignored because container_url contains a SAS secret.
+
+# Local directory holding session_* LeRobot datasets produced by the UR dual recorder.
+# Relative paths are resolved against this config file's directory.
+source_dir: "../../ur/dual_recorder/recordings_lerobot"
+
+# Full container-level SAS URL. Format:
+#   https://<account>.blob.core.windows.net/<container>?<sas-token>
+# Leave blank and set BLOB_SYNC_CONTAINER_URL in the environment instead.
+container_url: ""
+
+# Optional virtual folder inside the container (blobs go under this prefix).
+blob_prefix: "ur_dual_recorder"
+
+# Upload a session only after no file under it changed for this long, which
+# guarantees the camera video encoding has finished.
+settle_seconds: 60
+
+# How often (seconds) to rescan the source directory in watch mode.
+poll_interval_seconds: 30
+
+# Require encoded .mp4 files under videos/ before a session is eligible.
+require_videos: true
+
+# File/dir name patterns to skip when uploading (encoder temp dirs, markers).
+exclude_globs:
+  - "tmp*"
+  - "*.tmp"
+  - ".uploaded"

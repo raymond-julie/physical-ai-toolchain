@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera Streams</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header>
+    <h1>Camera Streams</h1>
+    <p class="sub">Anyone on this network can open the links below. Streams are MJPEG &mdash; works in a browser, VLC, or OpenCV.</p>
+  </header>
+
+  {% if not cameras %}
+  <p class="empty">No cameras found. Connect an Orbbec device (or check your <code>--config</code>) and restart the service.</p>
+  {% endif %}
+
+  <main class="grid">
+    {% for cam in cameras %}
+    <section class="card">
+      <div class="card-head">
+        <h2>{{ cam.name }}</h2>
+        <span class="badge {{ 'ok' if cam.connected else 'down' }}">
+          {{ 'live' if cam.connected else 'synthetic' }}
+        </span>
+      </div>
+
+      <a class="frame" href="{{ cam.stream_url }}" target="_blank" title="Open full live stream in a new tab">
+        <img
+          class="preview"
+          data-snapshot="{{ cam.snapshot_url }}"
+          alt="{{ cam.name }} preview"
+          loading="lazy"
+        />
+      </a>
+
+      <dl class="meta">
+        {% if cam.model %}<dt>Model</dt><dd>{{ cam.model }}</dd>{% endif %}
+        {% if cam.serial %}<dt>Serial</dt><dd>{{ cam.serial }}</dd>{% endif %}
+        {% if cam.resolution %}<dt>Resolution</dt><dd>{{ cam.resolution }}</dd>{% endif %}
+      </dl>
+
+      <div class="links">
+        <label>Stream link</label>
+        <div class="copy-row">
+          <input readonly value="{{ cam.stream_url }}" />
+          <button data-copy="{{ cam.stream_url }}">Copy</button>
+        </div>
+        <div class="actions">
+          <a href="{{ cam.stream_url }}" target="_blank">Open stream</a>
+          <a href="{{ cam.snapshot_url }}" target="_blank">Snapshot</a>
+        </div>
+      </div>
+    </section>
+    {% endfor %}
+  </main>
+
+  <footer>
+    <p>Catalog as JSON: <a href="/api/cameras">/api/cameras</a></p>
+    <p class="hint">Grid shows lightweight snapshots (~6&nbsp;fps) so the page stays responsive. Click any preview or &ldquo;Open stream&rdquo; for the full live MJPEG feed.</p>
+  </footer>
+
+  <script>
+    document.querySelectorAll('button[data-copy]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        navigator.clipboard.writeText(btn.dataset.copy).then(function () {
+          var prev = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(function () { btn.textContent = prev; }, 1200);
+        });
+      });
+    });
+
+    // Lightweight snapshot polling for the grid previews.
+    //
+    // Embedding always-on MJPEG <img> streams makes the browser decode every
+    // camera at full frame rate over permanent connections, which pins CPU and
+    // exhausts the per-host connection limit (the page appears frozen). Instead
+    // we poll one snapshot per camera at a time: a new request is only issued
+    // after the previous frame finishes loading, so there is never more than
+    // one outstanding connection per camera, and polling pauses when the tab is
+    // hidden. The full live MJPEG feed is still one click away.
+    (function () {
+      var PREVIEW_FPS = 6;
+      var period = 1000 / PREVIEW_FPS;
+      var hidden = false;
+
+      document.addEventListener('visibilitychange', function () {
+        hidden = document.hidden;
+      });
+
+      document.querySelectorAll('img.preview').forEach(function (img) {
+        var base = img.dataset.snapshot;
+        if (!base) { return; }
+
+        function schedule() {
+          setTimeout(tick, period);
+        }
+
+        function tick() {
+          if (hidden) { schedule(); return; }
+          // Cache-buster so the browser always fetches a fresh frame.
+          img.src = base + '?t=' + Date.now();
+        }
+
+        img.addEventListener('load', schedule);
+        img.addEventListener('error', schedule);
+        tick();
+      });
+    })();
+  </script>
+</body>
+</html>

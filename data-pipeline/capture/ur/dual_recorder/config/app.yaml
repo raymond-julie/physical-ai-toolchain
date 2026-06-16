@@ -1,0 +1,116 @@
+# UrDualRecorder application settings overlay.
+#
+# Device topology (arms, IPs, cameras) comes from /etc/trainmybot/config_v3.yaml
+# and is NOT duplicated here. This file only tunes settings specific to this
+# app. Every key is optional; omitted keys fall back to built-in defaults.
+# Precedence: built-in defaults < this file < CLI flags.
+
+control:
+  # NOTE: teleoperation/mirroring is shelved in recording-only mode. This whole
+  # block is unused until mirroring is re-enabled; kept for that future path.
+  # servoJ loop rate (Hz). config_v3 control_loop runs at 500; start at 125
+  # (8 ms) and raise only after verifying the controller round-trip latency.
+  frequency: 125.0
+  servo_time: 0.008
+  servo_lookahead: 0.05
+  servo_gain: 200
+  max_velocity: 1.5
+  max_acceleration: 3.0
+  alignment_speed: 0.25      # rad/s during the slow startup alignment moveJ
+  alignment_threshold: 0.02
+  stale_timeout: 0.2
+  # Optional per-joint soft limits (rad), as [[lo, hi], ...] x6. null = none.
+  joint_limits: null
+
+gripper:
+  # Recording-only mode reads (does not drive) the follower Robotiq 2F-85.
+  # Robotiq raw position (0..255) at/above which the gripper is "closed".
+  closed_threshold: 128
+  port: 63352
+  # --- The keys below belong to the shelved analog-teleop path and are
+  #     unused while recording-only. Kept for when mirroring is re-enabled. ---
+  analog_input: "tool0"
+  analog_min: 0.0
+  analog_max: 10.0
+  invert: false
+  deadband: 0.01
+  open_band: 0.03
+  close_band: 0.03
+  speed: 255
+  force: 80
+  command_rate: 10.0
+
+recording:
+  enabled: true
+  repo_id: "local/ur_dual"
+  root: "./recordings_lerobot"
+  fps: 30.0
+  task: "dual_arm_recording"
+  use_videos: true
+  min_episode_frames: 5
+  image_height: 480
+  image_width: 848
+  # Frames are buffered in RAM during capture and saved off the capture path so
+  # a new episode can record while the previous one still encodes. This caps the
+  # total buffered frames (live + awaiting encode) by an approximate RAM budget;
+  # if a very long take or deep encode backlog exceeds it, frames are dropped
+  # (with a warning) instead of risking an out-of-memory kill.
+  max_buffer_gb: 6.0
+  # Deferred encoding: when true, stopped episodes are held in a 'raw' state
+  # (frames kept in RAM) instead of encoding immediately; press the Encode
+  # button in the web GUI to flush them all to the encoder at once. Also
+  # togglable live from the GUI checkbox.
+  defer_encoding: false
+  # Video codec for the per-episode mp4s. lerobot v2.1 defaults to AV1
+  # (libsvtav1); GR00T and most decoders expect H.264, so default to h264.
+  # One of: h264 | hevc | libsvtav1.
+  video_codec: h264
+  # LeRobot dataset on-disk format. The launcher activates the matching venv:
+  #   v2.1 -> .venv    (lerobot 0.3.3, GR00T-compatible; the default)
+  #   v3.0 -> .venv-v3 (lerobot 0.4.4, streaming writer)
+  # Changing this from the GUI restarts the recorder with the matching venv.
+  # One of: v2.1 | v3.0.
+  lerobot_format: v2.1
+
+web:
+  enabled: true
+  host: "0.0.0.0"
+  port: 8080
+
+camera:
+  # Where camera frames come from:
+  #   orbbec — open each Orbbec device directly (default).
+  #   stream — consume MJPEG feeds from a running UrCameraStreamer so the
+  #            recorder can share the cameras with another process (the same
+  #            device cannot be opened by two processes at once).
+  source: stream
+  # Base URL of the UrCameraStreamer when source: stream. Each camera is read
+  # from "{stream_base_url}/stream/{serial}".
+  stream_base_url: "http://127.0.0.1:8000"
+  # Optional per-camera URL overrides keyed by config_v3 device_id:
+  # stream_urls:
+  #   cam_high: "http://10.50.102.2:8000/stream/CV3H4600001E"
+  stream_urls: {}
+
+pedal:
+  # USB foot pedal (e.g. iKKEGOL) — controls recording start/stop/discard.
+  enabled: true
+  # Explicit input device. Find it with `python -m ur_dual_recorder --list-pedals`.
+  # Example: device_path: "/dev/input/event11"
+  device_path: ""
+  # Or match by name substring (case-insensitive) when device_path is empty.
+  # Empty here auto-detects by hints (pedal/foot/switch).
+  device_name: ""
+  # Single-pedal toggle fallback key (only used when actions below is empty).
+  key: ""
+  # Grab the device so its keystroke is not also seen by the OS.
+  grab: true
+  # Map each pedal to an action. The iKKEGOL 3-pedal switch sends
+  # KEY_A / KEY_B / KEY_C left→right by default. Leave a value "" to unbind.
+  #   start   → begin a new episode
+  #   stop    → stop and SAVE the episode
+  #   discard → stop and DELETE the episode (no save)
+  actions:
+    start: "KEY_A"
+    stop: "KEY_B"
+    discard: "KEY_C"

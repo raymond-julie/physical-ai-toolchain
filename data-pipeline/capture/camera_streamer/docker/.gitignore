@@ -1,0 +1,3 @@
+# Prebuilt Orbbec SDK artifacts staged from the host by stage-orbbec.sh.
+# Regenerated locally before each Docker build; not source.
+vendor/
