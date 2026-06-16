@@ -1,0 +1,32 @@
+{{- if .Values.dataConfigModule.enabled }}
+# Custom GR00T N1.5 data config (Ur5eDualArmDataConfig) for the dual-arm UR5e
+# checkpoint, mounted into the server's WORKDIR so `load_data_config` can import
+# it as `{{ .Values.dataConfigModule.module }}:{{ .Values.dataConfigModule.className }}`.
+# The .py is the same modality layout + transforms the checkpoint trained with.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gr00t-inference.fullname" . }}-data-config
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+data:
+  {{ .Values.dataConfigModule.module }}.py: |-
+{{ .Files.Get (printf "files/%s.py" .Values.dataConfigModule.module) | indent 4 }}
+{{- end }}
+{{- if .Values.model.metadata.inject }}
+---
+# GR00T N1.5's Gr00tPolicy reads normalization stats from
+# <model_path>/experiment_cfg/metadata.json and raises if it is missing. The
+# modctl model artifact for this checkpoint does NOT include experiment_cfg, so
+# this ConfigMap supplies metadata.json and the init container drops it into the
+# weights cache before the server starts.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gr00t-inference.fullname" . }}-metadata
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+data:
+  metadata.json: |-
+{{ .Files.Get "files/metadata.json" | indent 4 }}
+{{- end }}

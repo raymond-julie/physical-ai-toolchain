@@ -1,0 +1,111 @@
+{{- if .Values.controlUi.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "gr00t-inference.controlUi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gr00t-inference.controlUi.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "gr00t-inference.controlUi.fullname" . }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      containers:
+        - name: control-ui
+          image: "{{ .Values.controlUi.image.repository }}:{{ .Values.controlUi.image.tag }}"
+          imagePullPolicy: {{ .Values.controlUi.image.pullPolicy }}
+          env:
+            # The Deployment this UI starts/stops.
+            - name: TARGET_NAMESPACE
+              value: {{ .Release.Namespace }}
+            - name: TARGET_DEPLOYMENT
+              value: {{ include "gr00t-inference.fullname" . }}
+            # GPU resource name advertised by the device plugin (for the GPU panel).
+            - name: GPU_RESOURCE_NAME
+              value: {{ .Values.gpu.resourceName | quote }}
+            # IP of the node this pod runs on; the ur-camera-streamer uses
+            # hostNetwork on the same node, so its MJPEG feeds are reachable here.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Base URL the UI proxies camera streams from. Defaults to the host
+            # node's streamer; override via controlUi.cameraStreamer.url.
+            - name: CAMERA_STREAMER_URL
+              value: {{ .Values.controlUi.cameraStreamer.url | default (printf "http://$(HOST_IP):%d" (int .Values.controlUi.cameraStreamer.port)) | quote }}
+            {{- if .Values.controlUi.gpuLoadPath }}
+            # In-container path to the host's Jetson GPU load file (mounted
+            # below). Lets the GPU panel show real utilization, not just
+            # allocation. Requires pinning this pod to the GPU node.
+            - name: GPU_LOAD_FILE
+              value: /host/gpu_load
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          {{- if .Values.controlUi.gpuLoadPath }}
+          volumeMounts:
+            # Read-only Jetson GPU load file (e.g. /sys/devices/platform/gpu.0/load,
+            # 0-1000 scale) so the UI can report utilization. hostPath requires the
+            # pod to run on the GPU node (see controlUi.nodeSelector).
+            - name: gpu-load
+              mountPath: /host/gpu_load
+              readOnly: true
+          {{- end }}
+      {{- with .Values.controlUi.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.controlUi.gpuLoadPath }}
+      volumes:
+        - name: gpu-load
+          hostPath:
+            path: {{ .Values.controlUi.gpuLoadPath | quote }}
+            type: File
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.controlUi.service.type }}
+  selector:
+    {{- include "gr00t-inference.controlUi.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.controlUi.service.port }}
+      targetPort: http
+      {{- if and (eq .Values.controlUi.service.type "NodePort") .Values.controlUi.service.nodePort }}
+      nodePort: {{ .Values.controlUi.service.nodePort }}
+      {{- end }}
+{{- end }}

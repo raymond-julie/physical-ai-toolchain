@@ -1,0 +1,147 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: gr00t-inference
+  namespace: default
+spec:
+  interval: 10m
+  releaseName: gr00t
+  # The fetch-weights init container downloads ~7 GiB via modctl (~13 min on this
+  # link), so the Helm readiness wait must exceed that or every upgrade times out
+  # mid-download and is marked failed.
+  timeout: 25m
+  chart:
+    spec:
+      # Local chart living in this same Git repo
+      # (fleet-deployment/gitops/charts/gr00t-inference).
+      chart: ./fleet-deployment/gitops/charts/gr00t-inference
+      sourceRef:
+        kind: GitRepository
+        name: flux-system
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    # Without a prior successful release there is no rollback target, so recover
+    # from a failed upgrade by reinstalling rather than rolling back.
+    remediation:
+      retries: 3
+      strategy: uninstall
+  values:
+    # Reuse the dockerconfigjson Secret already present for blob-sync pulls.
+    imagePullSecret: acr-immitationlearning
+
+    # GR00T N1.5 inference server image (build & push via gr00t-server/build_and_push.sh).
+    image:
+      repository: immitationlearning.azurecr.io/gr00t-inference-server
+      # Jetson/Tegra (L4T) N1.5 build; see gr00t-server/build_and_push.sh.
+      tag: "0.2-l4t"
+
+    # k3s/Jetson does not default to the nvidia container runtime, so the server
+    # pod must run under this RuntimeClass to actually get the GPU driver
+    # (otherwise torch.cuda fails with "Found no NVIDIA driver"). The node's
+    # device-plugin DaemonSet uses the same RuntimeClass.
+    runtimeClassName: nvidia
+
+    # NOTE: tried running the server on jetson-thor (stronger GPU) but that node
+    # is not fully provisioned as a cluster GPU node: (1) its in-cluster overlay
+    # networking is broken (flannel VXLAN doesn't carry pod traffic) and (2) its
+    # NVIDIA container runtime is misconfigured for this board -- the nvidia
+    # RuntimeClass uses csv-mode CDI discovery that fails with "unsupported
+    # device id: tegra", so the GPU container cannot even be created. Both need
+    # host-level fixes on thor. Until then the server stays on tegra-ubuntu.
+    nodeSelector:
+      kubernetes.io/hostname: tegra-ubuntu
+
+    # Embodiment tag the checkpoint was trained with. GR00T N1.5 matches this
+    # against EMBODIMENT_TAG_MAPPING keys (lowercase).
+    embodimentTag: new_embodiment
+
+    # GR00T N1.5 requires the training data config at load time (not stored in the
+    # checkpoint). This is the custom Ur5eDualArmDataConfig the dual-arm UR5e
+    # checkpoint trained with, mounted into the server via the chart ConfigMap.
+    dataConfig: "ur5e_dual_arm_data_config:Ur5eDualArmDataConfig"
+    dataConfigModule:
+      enabled: true
+      module: ur5e_dual_arm_data_config
+      className: Ur5eDualArmDataConfig
+
+    model:
+      tag: checkpoint-60000
+      # The model artifact omits experiment_cfg/metadata.json; inject the
+      # normalization stats GR00T N1.5 needs from the chart.
+      metadata:
+        inject: true
+
+    # Init container that pulls the CNCF ModelPack weights artifact (modctl-built).
+    # Built & pushed via modctl-init/build_and_push.sh.
+    modctl:
+      image: immitationlearning.azurecr.io/modctl
+      tag: "0.1"
+      # checkpoint-40000 is a pinned tag, so the weights never change. Once the
+      # cache PVC is populated, skip the multi-GiB re-pull on every pod start
+      # (the init container exits early when /models/gr00t/config.json exists).
+      alwaysPull: false
+
+    # Start/Stop/Status web UI.
+    controlUi:
+      enabled: true
+      image:
+        repository: immitationlearning.azurecr.io/gr00t-control-ui
+        # 0.2 adds camera streams, CPU/mem graphs, and GPU utilization.
+        tag: "0.2"
+      service:
+        # Keep the UI cluster-internal by default; access via kubectl
+        # port-forward when needed.
+        type: ClusterIP
+        port: 8080
+      # Pin to the GPU node: keeps HOST_IP aligned with the hostNetwork camera
+      # streamer and makes the GPU-load hostPath below valid.
+      nodeSelector:
+        kubernetes.io/hostname: tegra-ubuntu
+      # Jetson Orin GPU load counter (0-1000); enables real utilization in the UI.
+      gpuLoadPath: /sys/devices/platform/gpu.0/load
+
+    # Robot inference client: the closed loop that reads cameras + arm joints,
+    # queries the policy, and drives the two follower arms.
+    #
+    # SAFETY: deployed in DRY RUN (execute=false). It connects, queries the policy
+    # and logs predicted actions but does NOT move the robots. To actually command
+    # the arms, set execute=true AND assumeYes=true here and let Flux reconcile
+    # (do this deliberately, with the workspace clear and an e-stop ready). The
+    # per-step clamp and first-pose start gate remain active in execute mode.
+    robotClient:
+      enabled: true
+      image:
+        repository: immitationlearning.azurecr.io/gr00t-robot-client
+        tag: "0.2"
+      # Server runs in-cluster on tegra; reach it via the ClusterIP Service
+      # (leave policyHost empty to use the Service name).
+      policyHost: ""
+      # color_0..3 camera serials from /etc/trainmybot/config_v3.yaml
+      # (cam_high, cam_low, cam_right_wrist, cam_left_wrist).
+      cameraIds:
+        - CV3H4600001E
+        - CV3H46000031
+        - CV34361000HP
+        - CV34361000J3
+      # Follower arms (arm_left_follower / arm_right_follower).
+      robot1Ip: "192.168.1.11"
+      robot2Ip: "192.168.1.13"
+      # Language task the policy was trained with. Update to the real annotation.
+      task: "pick up the red block and place it in the box"
+      controlHz: 15
+      execSteps: 12
+      # The server is scaled 0/1 by the Control UI, so wait for it rather than
+      # crash-looping when it is stopped.
+      waitForServer: 900
+      # Secure-by-default: dry run only. Enable both deliberately when an
+      # operator is present and a motion window is approved.
+      execute: false
+      assumeYes: false
+      maxJointStep: 0.10
+      startThreshold: 0.30
+      # Pin to the node with the camera streamer and a route to the robot subnet.
+      nodeSelector:
+        kubernetes.io/hostname: tegra-ubuntu

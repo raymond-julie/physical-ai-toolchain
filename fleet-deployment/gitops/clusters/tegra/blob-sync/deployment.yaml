@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blob-sync
+  namespace: default
+  labels:
+    app: blob-sync
+spec:
+  replicas: 1
+  # Only one uploader may write the .uploaded markers at a time.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: blob-sync
+  template:
+    metadata:
+      labels:
+        app: blob-sync
+    spec:
+      imagePullSecrets:
+        - name: acr-immitationlearning
+      containers:
+        - name: blob-sync
+          image: immitationlearning.azurecr.io/blob_sync:latest
+          imagePullPolicy: Always
+          # Entrypoint already runs: python -m blob_sync --config /app/config.yaml
+          envFrom:
+            - secretRef:
+                name: blob-sync-secret
+          volumeMounts:
+            - name: config
+              mountPath: /app/config.yaml
+              subPath: config.yaml
+              readOnly: true
+            - name: recordings
+              mountPath: /data/recordings_lerobot
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: blob-sync-config
+        - name: recordings
+          hostPath:
+            path: /home/lab/Code/UrRecorder-MSFT/UrDualRecorder/recordings_lerobot
+            type: DirectoryOrCreate

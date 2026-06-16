@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ur-camera-streamer
+  namespace: default
+  labels:
+    app: ur-camera-streamer
+spec:
+  replicas: 1
+  # The streamer owns the physical GMSL cameras; never run two at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ur-camera-streamer
+  template:
+    metadata:
+      labels:
+        app: ur-camera-streamer
+    spec:
+      imagePullSecrets:
+        - name: acr-immitationlearning
+      # Host networking: the MJPEG streams must be reachable on the LAN and the
+      # printed share URLs use the host's real IP (matches the old compose run).
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      # Pin to the node physically wired to the GMSL cameras.
+      nodeSelector:
+        kubernetes.io/hostname: tegra-ubuntu
+      containers:
+        - name: streamer
+          image: immitationlearning.azurecr.io/ur-camera-streamer:0.1
+          imagePullPolicy: Always
+          args: ["--port", "8000"]
+          ports:
+            - name: http
+              containerPort: 8000
+              hostPort: 8000
+          # The Orbbec SDK talks to the GMSL cameras through V4L2 device nodes;
+          # privileged + /dev passthrough is the reliable Jetson setup (same as
+          # the previous docker-compose run).
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: dev
+              mountPath: /dev
+            - name: trainmybot-config
+              mountPath: /etc/trainmybot/config_v3.yaml
+              readOnly: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: dev
+          hostPath:
+            path: /dev
+        # Device topology (camera serials, arms) read by the streamer at start.
+        - name: trainmybot-config
+          hostPath:
+            path: /etc/trainmybot/config_v3.yaml
+            type: File

@@ -1,0 +1,23 @@
+{{- if .Values.model.persistence.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "gr00t-inference.pvcName" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+  annotations:
+    # Never delete the weights cache on Helm uninstall/remediation. Without this,
+    # a failed-release uninstall wipes the ~7 GiB cache and the next install
+    # re-downloads everything. Keeping it means the model is pulled at most once;
+    # delete this PVC manually if you ever need to reclaim the space.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ .Values.model.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.model.persistence.size }}
+  {{- with .Values.model.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

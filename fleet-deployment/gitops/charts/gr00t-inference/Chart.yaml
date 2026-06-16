@@ -1,0 +1,11 @@
+apiVersion: v2
+name: gr00t-inference
+description: |
+  Serves the NVIDIA Isaac-GR00T N1.5 dual-arm policy on k3s. The model weights
+  live in the ACR OCI model artifact "gr00t-n15-teradyne-dual-arm" (safetensors,
+  NOT a runnable container). A modctl init container pulls the weights into a
+  persistent volume on every pod start, then the inference server loads them.
+type: application
+version: 0.7.0
+# appVersion tracks the model artifact tag this chart defaults to.
+appVersion: "latest"

@@ -1,0 +1,11 @@
+# Runtime dependencies for the GR00T dual-arm UR5e inference client.
+# Deliberately lightweight: the GR00T ZMQ wire format is reimplemented in
+# robot_inference_client.py, so isaac-gr00t is NOT required on the robot host.
+pyzmq>=25.0
+msgpack>=1.0
+numpy>=1.24
+requests>=2.28
+opencv-python-headless>=4.7
+# ur_rtde has no aarch64 wheel; it is compiled from source in the Dockerfile.
+# The SDK source is referenced as a dependency, never vendored into this repo.
+ur_rtde>=1.5.6

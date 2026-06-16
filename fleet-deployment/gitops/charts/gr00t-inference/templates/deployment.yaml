@@ -1,0 +1,195 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gr00t-inference.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # The fetch-weights init container pulls ~7 GiB via modctl (~13 min). The
+  # Kubernetes default progress deadline (600s) would mark this Deployment failed
+  # mid-download, which makes Helm/Flux remediate and (with strategy: uninstall)
+  # wipe the weights PVC and re-download from scratch. Give the rollout enough
+  # time to finish the pull and load the model so it converges on the first try.
+  progressDeadlineSeconds: {{ .Values.progressDeadlineSeconds | default 1800 }}
+  # Weights cache is RWO; Recreate avoids two pods contending for the volume.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "gr00t-inference.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gr00t-inference.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.hostNetwork }}
+      # Run on the host network. Used to place the server on a node whose
+      # in-cluster pod/ClusterIP networking is broken (jetson-thor): the ZMQ
+      # server then binds the node's host IP and clients reach it host-to-host,
+      # bypassing the broken overlay. Pair with dnsPolicy: Default so the
+      # weights init container resolves the registry via the node's resolver
+      # (CoreDNS is unreachable from such a node).
+      hostNetwork: true
+      {{- end }}
+      {{- with .Values.dnsPolicy }}
+      dnsPolicy: {{ . }}
+      {{- end }}
+      {{- with .Values.runtimeClassName }}
+      # GPU access on k3s/Jetson requires the nvidia RuntimeClass; without it the
+      # container is scheduled onto the GPU but cannot see the driver.
+      runtimeClassName: {{ . }}
+      {{- end }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      initContainers:
+        # Pulls the ACR OCI *model artifact* (safetensors weights) into the cache
+        # volume. With model.tag=latest + modctl.alwaysPull=true this runs on every
+        # pod start, so each run of the app loads the newest weights from k3s.
+        #
+        # The artifact is a CNCF ModelPack (modctl-built) image: its weight layers
+        # carry org.cncf.model.filepath rather than org.opencontainers.image.title,
+        # so `oras pull` skips them and leaves the dir empty. modctl understands the
+        # format and extracts the files directly with --extract-from-remote.
+        - name: fetch-weights
+          image: "{{ .Values.modctl.image }}:{{ .Values.modctl.tag }}"
+          imagePullPolicy: {{ .Values.modctl.pullPolicy }}
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              DEST="{{ .Values.model.mountPath }}"
+              REF="{{ include "gr00t-inference.modelRef" . }}"
+              if [ "{{ .Values.modctl.alwaysPull }}" != "true" ] && [ -f "$DEST/config.json" ]; then
+                echo "Weights already present at $DEST and alwaysPull=false; skipping pull."
+              else
+                echo "Pulling model artifact: $REF -> $DEST"
+                modctl pull "$REF" --extract-dir "$DEST" --extract-from-remote
+              fi
+              {{- if .Values.model.metadata.inject }}
+              # GR00T N1.5 requires experiment_cfg/metadata.json (normalization
+              # stats) which the model artifact omits. Always (re)inject it from
+              # the mounted ConfigMap, regardless of whether the pull was skipped.
+              echo "Injecting experiment_cfg/metadata.json"
+              mkdir -p "$DEST/experiment_cfg"
+              cp /metadata-src/metadata.json "$DEST/experiment_cfg/metadata.json"
+              {{- end }}
+              echo "Contents of $DEST:"
+              ls -la "$DEST"
+          env:
+            # modctl reads registry auth from a Docker config.json (via
+            # credentials.NewStoreFromDocker, honoring $DOCKER_CONFIG) projected below.
+            - name: DOCKER_CONFIG
+              value: /oras-auth
+          volumeMounts:
+            - name: weights
+              mountPath: {{ .Values.model.mountPath }}
+            - name: oras-auth
+              mountPath: /oras-auth
+              readOnly: true
+            {{- if .Values.model.metadata.inject }}
+            - name: metadata
+              mountPath: /metadata-src
+              readOnly: true
+            {{- end }}
+      containers:
+        - name: gr00t-server
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Runs GR00T N1.5's ZMQ inference service
+          # (scripts/inference_service.py --server). N1.5 (unlike N1.7) needs an
+          # explicit --data-config to build the modality transform, since the
+          # checkpoint does not bundle a processor.
+          args:
+            - "--server"
+            - "--model-path={{ .Values.model.mountPath }}"
+            - "--embodiment-tag={{ .Values.embodimentTag }}"
+            {{- /* Prefer an explicit dataConfig; otherwise derive it from the
+                   mounted custom module so the two can never drift. */}}
+            - "--data-config={{ .Values.dataConfig | default (ternary (printf "%s:%s" .Values.dataConfigModule.module .Values.dataConfigModule.className) "" .Values.dataConfigModule.enabled) }}"
+            - "--denoising-steps={{ .Values.denoisingSteps }}"
+            - "--host=0.0.0.0"
+            - "--port={{ .Values.containerPort }}"
+            {{- with .Values.args }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: zmq
+              containerPort: {{ .Values.containerPort }}
+          # ZMQ is not HTTP; a TCP check confirms the server socket is bound.
+          readinessProbe:
+            tcpSocket:
+              port: zmq
+            # Model load is slow; give it room before marking ready.
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 40
+          livenessProbe:
+            tcpSocket:
+              port: zmq
+            initialDelaySeconds: 120
+            periodSeconds: 30
+          volumeMounts:
+            - name: weights
+              mountPath: {{ .Values.model.mountPath }}
+              readOnly: true
+            {{- if .Values.dataConfigModule.enabled }}
+            # Mount the custom data config module into WORKDIR so N1.5's
+            # load_data_config can import it (sys.path includes the cwd).
+            - name: data-config
+              mountPath: /workspace/{{ .Values.dataConfigModule.module }}.py
+              subPath: {{ .Values.dataConfigModule.module }}.py
+              readOnly: true
+            {{- end }}
+          resources:
+            requests:
+              {{- toYaml .Values.resources.requests | nindent 14 }}
+              {{- if gt (int .Values.gpu.count) 0 }}
+              {{ .Values.gpu.resourceName }}: "{{ .Values.gpu.count }}"
+              {{- end }}
+            limits:
+              {{- toYaml .Values.resources.limits | nindent 14 }}
+              {{- if gt (int .Values.gpu.count) 0 }}
+              {{ .Values.gpu.resourceName }}: "{{ .Values.gpu.count }}"
+              {{- end }}
+      volumes:
+        - name: weights
+          {{- if .Values.model.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "gr00t-inference.pvcName" . }}
+          {{- else }}
+          emptyDir:
+            sizeLimit: {{ .Values.model.persistence.size }}
+          {{- end }}
+        # dockerconfigjson Secret projected as config.json for ORAS auth.
+        - name: oras-auth
+          secret:
+            secretName: {{ .Values.imagePullSecret }}
+            items:
+              - key: .dockerconfigjson
+                path: config.json
+        {{- if .Values.dataConfigModule.enabled }}
+        # Custom GR00T data config module (Ur5eDualArmDataConfig).
+        - name: data-config
+          configMap:
+            name: {{ include "gr00t-inference.fullname" . }}-data-config
+        {{- end }}
+        {{- if .Values.model.metadata.inject }}
+        # metadata.json (normalization stats) injected into experiment_cfg by the
+        # init container.
+        - name: metadata
+          configMap:
+            name: {{ include "gr00t-inference.fullname" . }}-metadata
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

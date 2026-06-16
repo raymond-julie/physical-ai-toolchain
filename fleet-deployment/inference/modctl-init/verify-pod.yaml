@@ -1,0 +1,44 @@
+# Standalone debug Pod: pulls the GR00T ModelPack weights with modctl and lists
+# the extracted files, validating ACR auth + extraction outside the chart.
+# Image/registry/secret/artifact refs reflect the example ACR — substitute yours.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: modctl-verify
+  namespace: default
+spec:
+  restartPolicy: Never
+  runtimeClassName: nvidia
+  imagePullSecrets:
+    - name: acr-immitationlearning
+  containers:
+    - name: modctl
+      image: immitationlearning.azurecr.io/modctl:0.1
+      imagePullPolicy: IfNotPresent
+      command: ["sh", "-c"]
+      args:
+        - |
+          set -eu
+          REF="immitationlearning.azurecr.io/gr00t-n15-teradyne-dual-arm:checkpoint-40000"
+          echo "Pulling $REF -> /tmp/out"
+          modctl pull "$REF" --extract-dir /tmp/out --extract-from-remote
+          echo "=== extracted files ==="
+          ls -la /tmp/out
+      env:
+        - name: DOCKER_CONFIG
+          value: /oras-auth
+      volumeMounts:
+        - name: oras-auth
+          mountPath: /oras-auth
+          readOnly: true
+        - name: out
+          mountPath: /tmp/out
+  volumes:
+    - name: oras-auth
+      secret:
+        secretName: acr-immitationlearning
+        items:
+          - key: .dockerconfigjson
+            path: config.json
+    - name: out
+      emptyDir: {}

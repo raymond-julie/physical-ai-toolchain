@@ -1,0 +1,79 @@
+{{- if .Values.controlUi.enabled -}}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+rules:
+  # Read the target deployment's status.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["{{ include "gr00t-inference.fullname" . }}"]
+    verbs: ["get"]
+  # Scale it (start/stop) — restricted to the single target deployment.
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    resourceNames: ["{{ include "gr00t-inference.fullname" . }}"]
+    verbs: ["get", "patch", "update"]
+  # List the inference pods (to locate them by the deployment's selector for
+  # the resource graphs). resourceNames can't be used with list, so this is
+  # namespace-scoped read-only.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Read pod CPU/memory usage from the metrics-server for the resource graphs.
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gr00t-inference.controlUi.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# Nodes are cluster-scoped, so the GPU-allocation panel needs a ClusterRole.
+# Read-only on the node objects' capacity/allocatable only.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}-nodes
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}-nodes
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "gr00t-inference.controlUi.fullname" . }}-nodes
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "gr00t-inference.controlUi.fullname" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

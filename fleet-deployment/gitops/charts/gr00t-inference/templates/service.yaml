@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gr00t-inference.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "gr00t-inference.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: zmq
+      port: {{ .Values.service.port }}
+      targetPort: zmq

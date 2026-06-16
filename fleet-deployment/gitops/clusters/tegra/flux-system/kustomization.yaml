@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- gotk-components.yaml
+- gotk-sync.yaml
+# Pin every Flux controller to tegra-ubuntu. The jetson-thor node has broken
+# in-cluster pod/ClusterIP networking (flannel VXLAN between the two nodes does
+# not carry pod traffic), so a controller scheduled there cannot reach CoreDNS
+# or the source-controller artifact endpoint and Flux reconciliation wedges.
+# Keeping the controllers on the healthy control-plane node avoids that.
+patches:
+- target:
+    kind: Deployment
+    labelSelector: app.kubernetes.io/part-of=flux
+  patch: |
+    - op: add
+      path: /spec/template/spec/nodeSelector
+      value:
+        kubernetes.io/hostname: tegra-ubuntu

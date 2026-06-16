@@ -1,0 +1,268 @@
+# Default values for the gr00t-inference chart.
+# Override per-environment with: helm install ... -f my-values.yaml
+
+# -- Container registry that holds BOTH the serving image and the model artifact.
+# ENVIRONMENT-SPECIFIC: this default points at the Teradyne demo ACR. It MUST be
+# overridden per cluster (in the HelmRelease values or a `-f my-values.yaml`) to
+# point at the registry your images and model artifact actually live in. The
+# tegra HelmRelease overrides image.repository, modctl.image,
+# controlUi.image.repository and robotClient.image.repository with
+# fully-qualified refs, so those references stay correct even if this default is
+# left unchanged — but model.repository is resolved relative to this value, so
+# update it for any non-demo deployment.
+registry: immitationlearning.azurecr.io
+
+# Name of a pre-existing kubernetes.io/dockerconfigjson Secret used to pull from
+# the registry (image pulls) and to authenticate ORAS (weight pulls).
+imagePullSecret: acr-immitationlearning
+
+# ---------------------------------------------------------------------------
+# Model artifact (the weights). This is the OCI *model* repo in ACR.
+# ---------------------------------------------------------------------------
+model:
+  # Repository (relative to .registry) of the model-weights artifact.
+  repository: gr00t-n15-teradyne-dual-arm
+  # Tag to deploy. "latest" => the init container always pulls the newest weights
+  # on every pod start, so the app uses the latest model each run.
+  tag: latest
+  # Optional digest pin for reproducibility. If set, it overrides .model.tag.
+  # digest: "sha256:..."
+
+  # Persistent cache so weights survive pod restarts and aren't re-downloaded in
+  # full unless the upstream :latest changed.
+  persistence:
+    enabled: true
+    # Leave empty to use the cluster default StorageClass (k3s ships local-path).
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 20Gi
+  # Path inside the serving container where weights are mounted.
+  mountPath: /models/gr00t
+
+  # GR00T N1.5 reads normalization stats from experiment_cfg/metadata.json under
+  # the model path and errors if absent. When the model artifact omits it (custom
+  # embodiment), enable this to inject metadata.json (from files/metadata.json)
+  # into the weights cache via the init container.
+  metadata:
+    inject: false
+
+# modctl CLI image used by the init container to pull the model artifact.
+# The weights are a CNCF ModelPack artifact (built by modctl), whose layers
+# `oras pull` cannot materialize; modctl extracts them with
+# `modctl pull <ref> --extract-dir <dir> --extract-from-remote`.
+# Built & pushed via modctl-init/build_and_push.sh.
+modctl:
+  image: immitationlearning.azurecr.io/modctl
+  tag: "0.1"
+  pullPolicy: IfNotPresent
+  # When model.tag is "latest", re-pull on every start to guarantee freshness.
+  # When a fixed tag/digest is used, skip the pull if the cache already has weights.
+  alwaysPull: true
+
+# ---------------------------------------------------------------------------
+# Serving runtime (the container that actually runs inference).
+# ---------------------------------------------------------------------------
+image:
+  # GR00T N1.5 inference server image built from gr00t-server/Dockerfile
+  # (Isaac-GR00T n1.5-release + scripts/inference_service.py). Build & push with
+  # gr00t-server/build_and_push.sh.
+  repository: immitationlearning.azurecr.io/gr00t-inference-server
+  # TODO: set to the tag you built and pushed (e.g. "0.2-l4t").
+  tag: "TODO"
+  pullPolicy: Always
+
+# Embodiment tag the checkpoint was trained with. GR00T N1.5's inference_service
+# matches this against EMBODIMENT_TAG_MAPPING keys (lowercase), so a custom
+# fine-tune is typically "new_embodiment".
+embodimentTag: new_embodiment
+
+# Data config name that defines the modality config + transforms. GR00T N1.5
+# requires this at load time (it is NOT stored in the checkpoint). It MUST match
+# the config used during training. Built-in names live in
+# gr00t/experiment/data_config.py; a custom robot may need a "module:ClassName"
+# path. For the Teradyne/UR dual-arm fine-tune this is training-specific.
+dataConfig: ""
+
+# Custom data config module mounted into the server WORKDIR (/workspace) as a
+# ConfigMap, so N1.5's load_data_config can import it via "<module>:<className>".
+# The .py lives in this chart at files/<module>.py and must mirror the training
+# data config exactly. When enabled, set `dataConfig` to "<module>:<className>".
+dataConfigModule:
+  enabled: false
+  module: ur5e_dual_arm_data_config
+  className: Ur5eDualArmDataConfig
+
+# Number of diffusion denoising steps at inference (GR00T N1.5 default is 4).
+denoisingSteps: 4
+
+# Extra args appended to the server invocation (scripts/inference_service.py).
+# The chart already injects --server, --model-path, --embodiment-tag,
+# --data-config, --denoising-steps, --host and --port.
+args: []
+  # - "--no-strict"
+
+service:
+  type: ClusterIP
+  # GR00T's PolicyServer speaks ZMQ REQ/REP, not HTTP.
+  port: 5555
+# Port the ZMQ server listens on inside the container.
+containerPort: 5555
+
+# GPU is required for GR00T N1.5 (3B, bf16). Set to 0 only for image testing.
+gpu:
+  count: 1
+  resourceName: nvidia.com/gpu
+
+# RuntimeClass that grants the container GPU/driver access. On k3s/Jetson the
+# nvidia container runtime is NOT the default, so requesting nvidia.com/gpu alone
+# schedules the pod but leaves it WITHOUT the NVIDIA driver (torch.cuda init then
+# fails with "Found no NVIDIA driver"). The node's device-plugin pods run under
+# runtimeClassName: nvidia for the same reason. Leave empty on clusters where the
+# nvidia runtime is already the default. Set per-cluster in the HelmRelease.
+runtimeClassName: ""
+
+# Run the inference server on the host network. Set true to place it on a node
+# whose in-cluster pod/ClusterIP networking is broken (e.g. jetson-thor here):
+# the ZMQ server binds the node's host IP and clients connect host-to-host,
+# bypassing the broken overlay. Pair with dnsPolicy: Default and point
+# robotClient.policyHost at that node's host IP.
+hostNetwork: false
+# Pod DNS policy. Set to "Default" alongside hostNetwork so the weights init
+# container resolves the registry via the node's /etc/resolv.conf instead of the
+# in-cluster CoreDNS (which is unreachable from a node with broken overlay).
+dnsPolicy: ""
+
+resources:
+  requests:
+    cpu: "1"
+    memory: 8Gi
+  limits:
+    memory: 16Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+replicaCount: 1
+
+# Rollout progress deadline (seconds). The fetch-weights init container pulls
+# ~7 GiB via modctl (~13 min) before the server starts; the Kubernetes default
+# of 600s would mark the rollout failed mid-download and trigger Helm
+# remediation. Must comfortably exceed download + model-load time.
+progressDeadlineSeconds: 1800
+# ---------------------------------------------------------------------------
+# Control UI: a small web app with Start/Stop/Status buttons that scale the
+# inference Deployment between 0 (stopped, GPU freed) and 1 (running). It uses a
+# ServiceAccount whose RBAC is restricted to scaling THIS deployment only.
+# ---------------------------------------------------------------------------
+controlUi:
+  enabled: false
+  image:
+    # Built from gr00t-control-ui/Dockerfile via gr00t-control-ui/build_and_push.sh.
+    repository: immitationlearning.azurecr.io/gr00t-control-ui
+    tag: "TODO"
+    pullPolicy: Always
+  service:
+    # ClusterIP + `kubectl port-forward` is simplest. Use NodePort to reach it
+    # on the Tegra node's IP without port-forwarding.
+    type: ClusterIP
+    port: 8080
+    # nodePort: 30080  # only used when service.type=NodePort
+  # Live camera feeds are reverse-proxied from the ur-camera-streamer, which runs
+  # with hostNetwork on the same node. Leave url empty to derive it from the
+  # node's hostIP (downward API) and the port below; set url to override.
+  cameraStreamer:
+    url: ""
+    port: 8000
+  # Pin the control UI to a specific node. Required when gpuLoadPath is set (the
+  # hostPath GPU-load file only exists on the GPU node) and keeps HOST_IP aligned
+  # with the hostNetwork camera streamer. Example: {kubernetes.io/hostname: tegra-ubuntu}.
+  nodeSelector: {}
+  # Host path to the Jetson GPU load file (0-1000 scale). When set, it is mounted
+  # read-only and the GPU panel reports real utilization instead of only
+  # allocation. Leave empty on non-Jetson clusters. Jetson Orin: /sys/devices/platform/gpu.0/load
+  gpuLoadPath: ""
+
+# ---------------------------------------------------------------------------
+# Robot inference client: the closed loop that actually drives the arms. It
+# reads the four Orbbec cameras (via the hostNetwork ur-camera-streamer) plus
+# both follower arms' joints (RTDE), queries the policy server over ZMQ, and
+# streams the predicted joint targets back to the arms. Built from
+# gr00t-robot-client/Dockerfile via gr00t-robot-client/build_and_push.sh.
+#
+# SAFETY: defaults to DRY RUN (execute=false) -- it connects, queries the policy
+# and logs predicted actions but does NOT move the robots. To actually command
+# the arms, set BOTH execute=true and assumeYes=true (no TTY in-cluster, so the
+# interactive MOVE confirmation must be bypassed deliberately). The per-step
+# clamp and first-pose start gate remain active in execute mode.
+# ---------------------------------------------------------------------------
+robotClient:
+  enabled: false
+  image:
+    repository: immitationlearning.azurecr.io/gr00t-robot-client
+    tag: "TODO"
+    pullPolicy: Always
+  # Policy server host the client connects to. Empty => the in-cluster Service
+  # name (ClusterIP). Set to a node host IP when the server runs hostNetwork on a
+  # node with broken overlay networking, so the client reaches it host-to-host.
+  policyHost: ""
+  # The streamer addresses cameras by serial; its API runs hostNetwork on the
+  # node. Leave url empty to derive http://<hostIP>:<port> from the downward API.
+  cameraStreamer:
+    url: ""
+    port: 8000
+  # The four ur-camera-streamer camera serials mapped to color_0..color_3, in
+  # the training order. From /etc/trainmybot/config_v3.yaml: color_0=cam_high,
+  # color_1=cam_low, color_2=cam_right_wrist, color_3=cam_left_wrist. A wrong
+  # order feeds the policy the wrong views -> wrong motion. Verify per rig.
+  cameraIds:
+    - CV3H4600001E
+    - CV3H46000031
+    - CV34361000HP
+    - CV34361000J3
+  # Follower arm IPs (arm_left_follower / arm_right_follower in config_v3.yaml).
+  # robot1 == left follower, robot2 == right follower (matches training).
+  robot1Ip: "192.168.1.11"
+  robot2Ip: "192.168.1.13"
+  # Language task fed to the policy; must match the training annotation.
+  task: ""
+  # Action playback rate (match training fps). The 16-step horizon implies ~15.
+  controlHz: 15
+  # Steps of each 16-step chunk to execute before re-querying (receding horizon).
+  # Should cover the inference latency so the arms keep moving between queries.
+  execSteps: 12
+  # Seconds to keep retrying the policy-server ping before giving up. The server
+  # may be scaled to 0 by the Control UI, so wait rather than crash-loop.
+  waitForServer: 600
+  # --- Safety guards ---
+  # Dry run unless BOTH of these are true.
+  execute: false
+  assumeYes: false
+  # Max per-joint change per control step (rad); caps joint speed. At controlHz
+  # this is a velocity limit (e.g. 0.10 rad/step @ 15Hz = 1.5 rad/s). Keep it
+  # above normal demo speed so it acts as a safety cap, not a throttle that
+  # makes the arms lag the policy.
+  maxJointStep: 0.10
+  # Refuse to start if the first predicted pose is farther than this (rad) from
+  # the measured joints.
+  startThreshold: 0.30
+  # Override the first-pose start gate (use with caution).
+  allowJump: false
+  # Mount the chart's metadata.json (when model.metadata.inject) and pass it to
+  # the client so targets are also clamped to the trained absolute joint range.
+  metadata:
+    enabled: true
+  # Pin to the node that hosts the camera streamer (hostNetwork) and has a route
+  # to the robot subnet. Keeps HOST_IP aligned with the streamer.
+  nodeSelector:
+    kubernetes.io/hostname: tegra-ubuntu
+  # Extra CLI args appended verbatim to robot_inference_client.py.
+  extraArgs: []
+  verbose: false
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi

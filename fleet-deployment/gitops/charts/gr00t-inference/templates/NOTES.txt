@@ -1,0 +1,44 @@
+GR00T inference server installed as release "{{ .Release.Name }}".
+
+Model artifact : {{ include "gr00t-inference.modelRef" . }}
+Weights mount  : {{ .Values.model.mountPath }} (pulled by modctl init container)
+Serving image  : {{ .Values.image.repository }}:{{ .Values.image.tag }}
+
+{{- if eq .Values.image.tag "TODO" }}
+
+ACTION REQUIRED:
+  The serving image tag is still "TODO". Build & push the image, then set the tag:
+    ./gr00t-server/build_and_push.sh 0.1
+    helm upgrade {{ .Release.Name }} . --set image.tag=0.1
+{{- end }}
+
+How "always latest" works:
+  model.tag = "{{ .Values.model.tag }}" and modctl.alwaysPull = {{ .Values.modctl.alwaysPull }}.
+  With tag=latest + alwaysPull=true, the init container re-pulls the newest weights
+  into the cached volume on every pod start, so each run uses the latest model.
+
+Reach the ZMQ inference server inside the cluster (GR00T PolicyClient):
+  host = {{ include "gr00t-inference.fullname" . }}.{{ .Release.Namespace }}.svc
+  port = {{ .Values.service.port }}
+
+  from gr00t.policy.server_client import PolicyClient
+  policy = PolicyClient(host="{{ include "gr00t-inference.fullname" . }}.{{ .Release.Namespace }}.svc", port={{ .Values.service.port }})
+  action, info = policy.get_action(observation)
+
+Port-forward for local testing:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "gr00t-inference.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+{{- if .Values.controlUi.enabled }}
+
+Control UI (Start / Stop / Status + camera streams + resource graphs):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "gr00t-inference.controlUi.fullname" . }} {{ .Values.controlUi.service.port }}:{{ .Values.controlUi.service.port }}
+  then open http://localhost:{{ .Values.controlUi.service.port }}
+  Stop = scale the inference deployment to 0 (GPU freed; weights stay cached).
+  The page also shows: live Orbbec camera feeds (proxied from ur-camera-streamer),
+  the inference pod's CPU/memory over time (metrics-server), and GPU allocation.
+  {{- if and (eq .Values.controlUi.service.type "NodePort") .Values.controlUi.service.nodePort }}
+
+  This release exposes the UI as a NodePort, so you can skip the port-forward and
+  open it directly on the node:
+    http://<node-ip>:{{ .Values.controlUi.service.nodePort }}
+  {{- end }}
+{{- end }}

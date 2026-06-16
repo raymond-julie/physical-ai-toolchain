@@ -1,0 +1,115 @@
+{{- if .Values.robotClient.enabled -}}
+# Robot inference client: closes the control loop the Control UI does not. It
+# reads the four Orbbec cameras (via the hostNetwork ur-camera-streamer) and both
+# follower arms' joints (RTDE), queries the GR00T policy server over ZMQ, and
+# streams the predicted joint targets back to the arms.
+#
+# DEFAULTS TO DRY RUN: with robotClient.execute=false it connects, queries the
+# policy and logs predicted actions but does NOT move the robots. Set
+# robotClient.execute=true AND robotClient.assumeYes=true to actually command the
+# arms (there is no TTY in-cluster, so the interactive confirmation is bypassed
+# by assumeYes). The per-step clamp and first-pose start gate stay active in
+# execute mode.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gr00t-inference.robotClient.fullname" . }}
+  labels:
+    {{- include "gr00t-inference.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Single stateful control loop; never run two clients at the same robots.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "gr00t-inference.robotClient.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gr00t-inference.robotClient.selectorLabels" . | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      containers:
+        - name: robot-client
+          image: "{{ .Values.robotClient.image.repository }}:{{ .Values.robotClient.image.tag }}"
+          imagePullPolicy: {{ .Values.robotClient.image.pullPolicy }}
+          env:
+            # IP of the node this pod runs on. The ur-camera-streamer uses
+            # hostNetwork on the same node, so its HTTP API is reachable here.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Base URL of the camera streamer. Defaults to the host node's
+            # streamer; override via robotClient.cameraStreamer.url.
+            - name: CAMERA_STREAMER_URL
+              value: {{ .Values.robotClient.cameraStreamer.url | default (printf "http://$(HOST_IP):%d" (int .Values.robotClient.cameraStreamer.port)) | quote }}
+          args:
+            - --policy-host
+            - {{ .Values.robotClient.policyHost | default (include "gr00t-inference.fullname" .) | quote }}
+            - --policy-port
+            - {{ .Values.service.port | quote }}
+            - --camera-url
+            - $(CAMERA_STREAMER_URL)
+            - --camera-ids
+            {{- range .Values.robotClient.cameraIds }}
+            - {{ . | quote }}
+            {{- end }}
+            - --robot1-ip
+            - {{ .Values.robotClient.robot1Ip | quote }}
+            - --robot2-ip
+            - {{ .Values.robotClient.robot2Ip | quote }}
+            - --task
+            - {{ .Values.robotClient.task | quote }}
+            - --control-hz
+            - {{ .Values.robotClient.controlHz | quote }}
+            - --exec-steps
+            - {{ .Values.robotClient.execSteps | quote }}
+            - --max-joint-step
+            - {{ .Values.robotClient.maxJointStep | quote }}
+            - --start-threshold
+            - {{ .Values.robotClient.startThreshold | quote }}
+            - --wait-for-server
+            - {{ .Values.robotClient.waitForServer | quote }}
+            {{- if .Values.robotClient.allowJump }}
+            - --allow-jump
+            {{- end }}
+            {{- if and .Values.robotClient.metadata.enabled .Values.model.metadata.inject }}
+            - --metadata
+            - /metadata/metadata.json
+            {{- end }}
+            {{- if .Values.robotClient.execute }}
+            - --execute
+            {{- end }}
+            {{- if .Values.robotClient.assumeYes }}
+            - --assume-yes
+            {{- end }}
+            {{- if .Values.robotClient.verbose }}
+            - -v
+            {{- end }}
+            {{- range .Values.robotClient.extraArgs }}
+            - {{ . | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.robotClient.resources | nindent 12 }}
+          {{- if and .Values.robotClient.metadata.enabled .Values.model.metadata.inject }}
+          volumeMounts:
+            # Normalization stats for absolute joint clamping (same metadata.json
+            # the server loads). Reuses the chart's metadata ConfigMap.
+            - name: metadata
+              mountPath: /metadata
+              readOnly: true
+          {{- end }}
+      {{- with .Values.robotClient.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if and .Values.robotClient.metadata.enabled .Values.model.metadata.inject }}
+      volumes:
+        - name: metadata
+          configMap:
+            name: {{ include "gr00t-inference.fullname" . }}-metadata
+      {{- end }}
+{{- end }}

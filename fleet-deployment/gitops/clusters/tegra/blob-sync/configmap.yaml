@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: blob-sync-config
+  namespace: default
+data:
+  config.yaml: |
+    # Non-secret blob_sync settings. The SAS container_url is injected via the
+    # BLOB_SYNC_CONTAINER_URL env var from the 'blob-sync-secret' Secret.
+    source_dir: "/data/recordings_lerobot"
+    blob_prefix: "ur_dual_recorder"
+    settle_seconds: 60
+    poll_interval_seconds: 30
+    require_videos: true
+    exclude_globs:
+      - "tmp*"
+      - "*.tmp"
+      - ".uploaded"
