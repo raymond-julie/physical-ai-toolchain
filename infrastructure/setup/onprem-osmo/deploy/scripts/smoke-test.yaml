@@ -1,0 +1,142 @@
+# ==============================================================================
+# OSMO Cluster Smoke Test — LeRobot-format episodes (default)
+#
+# A short workflow that proves a freshly deployed OSMO cluster can schedule
+# pods, (optionally) allocate a GPU via the NVIDIA GPU Operator, and run a
+# tiny PyTorch job. Episodes default to **LeRobot dataset format** keys
+# (`observation.state`, `action`, `episode_index`, `frame_index`,
+# `timestamp`); no real dataset is required — synthetic tensors mimic the
+# LeRobot schema so the test is shape-compatible with downstream LeRobot /
+# GROOT pipelines.
+#
+# Written in OSMO native workflow format (OSMO 6.x). Override defaults via
+# `--set`:
+#
+#   osmo workflow submit smoke-test.yaml                           # GPU run
+#   osmo workflow submit smoke-test.yaml --set use_gpu=false gpu=0 # CPU-only
+#
+# Optional overrides:
+#   --set robot_name=ur5e episode_count=4 dataset_format=lerobot \
+#         image=pytorch/pytorch:...
+# ==============================================================================
+workflow:
+  name: "{{workflow_name}}"
+
+  resources:
+    default:
+      cpu: 2
+      memory: 4Gi
+      storage: 4Gi
+      gpu: {{gpu}}
+
+  tasks:
+    - name: smoke-test
+      image: "{{image}}"
+      # Invoke bash with the script as a positional argument so the injected
+      # file does not need the +x bit (OSMO file injection strips it).
+      command: ["bash"]
+      args: ["/tmp/smoke.sh"]
+      environment:
+        ROBOT_NAME: "{{robot_name}}"
+        EPISODE_COUNT: "{{episode_count}}"
+        DATASET_FORMAT: "{{dataset_format}}"
+        STATE_DIM: "{{state_dim}}"
+        ACTION_DIM: "{{action_dim}}"
+        USE_GPU: "{{use_gpu}}"
+        PYTHONUNBUFFERED: "1"
+      files:
+        - path: /tmp/smoke.sh
+          contents: |
+            #!/usr/bin/env bash
+            set -euo pipefail
+            echo "========================================================"
+            echo " OSMO Smoke Test"
+            echo "   robot:     ${ROBOT_NAME}"
+            echo "   episodes:  ${EPISODE_COUNT}"
+            echo "   format:    ${DATASET_FORMAT}"
+            echo "   state_dim: ${STATE_DIM}"
+            echo "   action_dim:${ACTION_DIM}"
+            echo "   gpu:       ${USE_GPU}"
+            echo "   node:      $(hostname)"
+            echo "   date:      $(date -u)"
+            echo "========================================================"
+
+            if [ "${USE_GPU}" = "true" ]; then
+              echo "--- nvidia-smi ---"
+              nvidia-smi || { echo "GPU requested but not available"; exit 1; }
+            fi
+
+            echo "--- /dev/shm ---"
+            df -h /dev/shm || true
+
+            python /tmp/smoke.py
+            echo "SMOKE_TEST_RESULT=PASS"
+
+        - path: /tmp/smoke.py
+          contents: |
+            import os, time
+            import torch
+
+            robot     = os.environ.get("ROBOT_NAME", "lerobot/ur5e")
+            episodes  = int(os.environ.get("EPISODE_COUNT", "4"))
+            fmt       = os.environ.get("DATASET_FORMAT", "lerobot").lower()
+            state_dim = int(os.environ.get("STATE_DIM", "7"))
+            action_dim= int(os.environ.get("ACTION_DIM", "7"))
+            use_gpu   = os.environ.get("USE_GPU", "true").lower() == "true"
+            device    = torch.device("cuda" if use_gpu and torch.cuda.is_available() else "cpu")
+
+            if fmt != "lerobot":
+                raise SystemExit(f"[smoke] FAIL: only LeRobot dataset format is supported "
+                                 f"(got DATASET_FORMAT={fmt!r}). "
+                                 f"Re-submit with --set dataset_format=lerobot.")
+
+            print(f"[smoke] torch={torch.__version__} device={device} "
+                  f"robot={robot} episodes={episodes} format={fmt} "
+                  f"state_dim={state_dim} action_dim={action_dim}")
+
+            # Synthetic episodes mimicking the LeRobot dataset schema:
+            #   observation.state : (T, state_dim)   float32
+            #   action            : (T, action_dim)  float32
+            #   episode_index     : (T,)             int64
+            #   frame_index       : (T,)             int64
+            #   timestamp         : (T,)             float32
+            def synth_lerobot_episode(ep_idx: int, frames: int = 128):
+                return {
+                    "observation.state": torch.randn(frames, state_dim, device=device),
+                    "action":            torch.randn(frames, action_dim, device=device),
+                    "episode_index":     torch.full((frames,), ep_idx, dtype=torch.long, device=device),
+                    "frame_index":       torch.arange(frames, dtype=torch.long, device=device),
+                    "timestamp":         torch.arange(frames, dtype=torch.float32, device=device) / 30.0,
+                }
+
+            # Tiny MLP standing in for any robot policy head:
+            #   observation.state -> action
+            model = torch.nn.Sequential(
+                torch.nn.Linear(state_dim, 64), torch.nn.ReLU(),
+                torch.nn.Linear(64, action_dim),
+            ).to(device)
+            opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+            for ep in range(episodes):
+                batch  = synth_lerobot_episode(ep)
+                obs    = batch["observation.state"]
+                target = batch["action"]
+                pred   = model(obs)
+                loss   = torch.nn.functional.mse_loss(pred, target)
+                opt.zero_grad(); loss.backward(); opt.step()
+                print(f"[smoke] episode {ep+1}/{episodes} "
+                      f"frames={obs.shape[0]} loss={loss.item():.4f}")
+                time.sleep(1)
+
+            print("[smoke] PASS")
+
+default-values:
+  workflow_name: osmo-smoke-test   # Name used for the submitted workflow
+  robot_name: lerobot/ur5e         # LeRobot-style id — e.g. "lerobot/ur5e", "lerobot/aloha"
+  episode_count: 4                 # Synthetic LeRobot episodes to train over
+  dataset_format: lerobot          # Episode schema (only "lerobot" is supported)
+  state_dim: 7                     # observation.state width (UR5e: 6 joints + gripper)
+  action_dim: 7                    # action width (UR5e: 6 joints + gripper)
+  use_gpu: "true"                  # Set to "false" on CPU-only clusters
+  gpu: 1                           # GPUs per task. Use 0 with use_gpu=false
+  image: pytorch/pytorch:2.4.1-cuda12.4-cudnn9-runtime

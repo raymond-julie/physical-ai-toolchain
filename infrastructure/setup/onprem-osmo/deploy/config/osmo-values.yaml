@@ -1,0 +1,94 @@
+##############################################################################
+# OSMO Quick-Start Helm Values
+#
+# Custom values for the OSMO quick-start Helm chart.
+# Adjusted for 3-node bare-metal deployment (no node-group selectors).
+#
+# Nodes:
+#   - Control plane + workloads (untainted)
+#   - 2 additional worker nodes
+#
+# All 3 nodes have GPUs and can run OSMO jobs.
+#
+# Reference: https://github.com/NVIDIA/OSMO/tree/main/deployments/charts/quick-start
+##############################################################################
+
+# Global: remove all node selectors so pods schedule freely across all nodes
+global:
+  nodeSelector: {}
+  # Image tag for OSMO platform images on nvcr.io/nvidia/osmo/*.
+  # Keep this empty (or matching the chart default) unless you know a specific
+  # point release exists — e.g. "6.2.10" was rejected by nvcr.io with
+  # `ImagePullBackOff: not found`, while the chart default "6.2" works.
+  osmoImageTag: "6.2"
+
+# Ingress NGINX (included in quick-start chart)
+ingress-nginx:
+  controller:
+    nodeSelector: {}
+    service:
+      type: NodePort
+      nodePorts:
+        http: 30080
+        https: 30443
+    hostPort:
+      enabled: true
+
+# OSMO Service configuration
+service:
+  nodeSelector: {}
+  services:
+    service:
+      hostname: "quick-start.osmo"
+      imagePullPolicy: IfNotPresent
+      nodeSelector: {}
+      scaling:
+        minReplicas: 1
+        maxReplicas: 3
+
+    postgres:
+      enabled: true
+      storageClassName: local-path
+      imagePullPolicy: IfNotPresent
+      nodeSelector: {}
+
+    redis:
+      enabled: true
+      storageClassName: local-path
+      imagePullPolicy: IfNotPresent
+      tlsEnabled: false
+      nodeSelector: {}
+
+    localstackS3:
+      enabled: true
+      buckets:
+        - osmo
+      persistence:
+        enabled: true
+      imagePullPolicy: IfNotPresent
+      nodeSelector: {}
+
+# Web UI configuration
+web-ui:
+  nodeSelector: {}
+  services:
+    ui:
+      hostname: "quick-start.osmo"
+      imagePullPolicy: IfNotPresent
+      nodeSelector: {}
+
+# Router configuration
+router:
+  nodeSelector: {}
+  services:
+    service:
+      hostname: "quick-start.osmo"
+      imagePullPolicy: IfNotPresent
+      nodeSelector: {}
+
+# Backend Operator configuration
+backend-operator:
+  nodeSelector: {}
+  global:
+    enableClusterRoles: true
+    enableNonClusterRoles: true
