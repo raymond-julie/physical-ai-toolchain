@@ -19,7 +19,7 @@ import re
 
 _LOGGER = logging.getLogger("evaluation.vlm_judge")
 
-PROMPT_VERSION = "outcome-mcq-v1+gvl-process-v1+milestones-v1+failuremode-v1"
+PROMPT_VERSION = "outcome-mcq-v1+process-progress-v3+milestones-v1+failuremode-v1"
 
 
 # -------------------------------------------------------------------------
@@ -74,36 +74,46 @@ def parse_outcome_response(text: str) -> bool | None:
 
 
 PROCESS_SYSTEM_PROMPT = (
-    "You estimate task-completion progress at each frame of a robot manipulation video. "
-    "You always output a strict JSON array and nothing else."
+    "You estimate visible task-completion progress at each frame of a robot manipulation video. "
+    "You compare frames against each other, use the full 0-100 scale when progress changes, "
+    "and always output a strict JSON array and nothing else."
 )
 
 
 PROCESS_USER_TEMPLATE = """\
 You will see {n_frames} frames sampled from a robot manipulation episode.
 
-The first frame shown is the FIRST frame of the trajectory (anchored at progress 0). \
-The remaining {n_shuffled} frames are presented in RANDOM ORDER (NOT chronological).
+The frames are presented in CHRONOLOGICAL ORDER from the beginning to the end of the episode. \
+Each image is labeled "frame i/n" in the top-left corner.
 
 TASK INSTRUCTION: {instruction}
 
-For each frame index i = 1..{n_frames} in the order shown, output an integer 0-100 \
-estimating how much of the task is completed in that frame:
+For each labeled frame in order, output an integer 0-100 estimating how much of the task is completed:
   - 0 = nothing of the task is yet started.
+    - 20-40 = the robot is approaching or aligning with the object.
+    - 40-70 = the robot has grasped/lifted or is transporting the object.
+    - 70-95 = the object is at or near the target, but final placement is not fully clear.
   - 100 = the task is fully complete and the goal state is achieved.
-  - Intermediate values reflect the visible progress (approach, grasp, transport, place).
 
-Output ONLY a single JSON array of {n_frames} integers and nothing else. Example:
+If the final frame shows successful completion, the final value MUST be between 80 and 100. \
+If visible state changes across the episode, the values MUST change across frames. \
+Do not return the same value for every frame unless every frame is visually indistinguishable.
 
-  [0, 27, 13, 88, 41, 100]
+Output ONLY a single JSON array of exactly {n_frames} integers and nothing else. Example:
+
+    {example_array}
 """
 
 
 def render_process_prompt(*, instruction: str, n_frames: int) -> str:
+    if n_frames <= 1:
+        example = [0]
+    else:
+        example = [round(i * 100 / (n_frames - 1)) for i in range(n_frames)]
     return PROCESS_USER_TEMPLATE.format(
         instruction=instruction,
         n_frames=n_frames,
-        n_shuffled=max(0, n_frames - 1),
+        example_array=json.dumps(example),
     )
 
 

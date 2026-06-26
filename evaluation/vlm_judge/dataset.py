@@ -328,4 +328,6 @@ def _load_tasks_parquet(path: Path) -> dict[int, str]:
     import pyarrow.parquet as pq
 
     df = pq.read_table(path).to_pandas()
+    if "task_index" not in df.columns or "task" not in df.columns:
+        return {}
     return {int(r["task_index"]): str(r["task"]) for r in df.to_dict(orient="records")}

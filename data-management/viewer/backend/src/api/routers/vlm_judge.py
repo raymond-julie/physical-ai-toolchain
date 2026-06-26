@@ -10,7 +10,8 @@ Endpoints (all under ``/api/datasets``, mounted with auth):
 - ``POST   /{dataset_id}/episodes/{episode_idx}/judge`` — run the judge (cached or fresh).
 
 The cache is keyed on (video paths + size + mtime, instruction, judge_model,
-prompt_version, agent_config) so re-running over the same episode is free.
+prompt_version, temporal window, agent_config) so re-running over the same
+episode is free.
 """
 
 from __future__ import annotations
@@ -123,6 +124,8 @@ async def get_episode_judgment(
         instruction=record.instruction,
         judge_model=judge_service.model_id,
         prompt_version=_prompt_version(),
+        from_s=record.from_timestamp,
+        to_s=record.to_timestamp,
         agent_config=judge_service.config.agent,
     )
     cached_payload = cache.get(cache_key)
@@ -174,6 +177,8 @@ async def run_episode_judgment(
         instruction=instruction,
         judge_model=judge_service.model_id,
         prompt_version=_prompt_version(),
+        from_s=record.from_timestamp,
+        to_s=record.to_timestamp,
         agent_config=judge_service.config.agent,
     )
     was_cached = not payload.force and cache.get(cache_key) is not None

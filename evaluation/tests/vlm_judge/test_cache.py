@@ -68,6 +68,27 @@ class TestJudgeCache:
         )
         assert key1 != key2
 
+    def test_key_changes_with_episode_window(self, tmp_path: Path) -> None:
+        cache = JudgeCache(tmp_path / "cache")
+        video = _touch(tmp_path / "chunk.mp4")
+        key1 = cache.key(
+            video_paths={"front": video},
+            instruction="pick orange",
+            judge_model="echo",
+            prompt_version="v1",
+            from_s=0.0,
+            to_s=10.0,
+        )
+        key2 = cache.key(
+            video_paths={"front": video},
+            instruction="pick orange",
+            judge_model="echo",
+            prompt_version="v1",
+            from_s=10.0,
+            to_s=20.0,
+        )
+        assert key1 != key2
+
     def test_corrupt_entry_is_ignored(self, tmp_path: Path) -> None:
         cache = JudgeCache(tmp_path / "cache")
         video = _touch(tmp_path / "ep.mp4")

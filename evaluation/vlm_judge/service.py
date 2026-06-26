@@ -109,6 +109,8 @@ class JudgeService:
             instruction=instruction,
             judge_model=self.model_id,
             prompt_version=PROMPT_VERSION,
+            from_s=from_s,
+            to_s=to_s,
             agent_config=self._config.agent,
         )
         if not force and cache.enabled:
