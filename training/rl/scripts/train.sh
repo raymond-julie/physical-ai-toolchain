@@ -75,17 +75,6 @@ else
   export PYTHONPATH="${REPO_ROOT}:${PYTHONPATH:-}"
 fi
 
-if command -v uv &>/dev/null && [[ -n "${UV_PYTHON:-}" ]]; then
-  uv pip uninstall -y scipy >/dev/null 2>&1 || true
-  uv pip install --upgrade "numpy>=1.26.0,<2.0.0" || {
-    echo "uv failed, falling back to pip..."
-    run_python -m pip install --upgrade "numpy>=1.26.0,<2.0.0" --quiet
-  }
-else
-  run_python -m pip uninstall -y scipy >/dev/null 2>&1 || true
-  run_python -m pip install --upgrade "numpy>=1.26.0,<2.0.0" --quiet
-fi
-
 if command -v uv &>/dev/null; then
   echo "uv detected, exporting locked training manifest dependencies..."
   if [[ -n "${VIRTUAL_ENV:-}" ]]; then

@@ -363,7 +363,7 @@ When `--vla-version 1.7` is set the script auto-resolves `${name}_modality_confi
 | `--batch-size`           | `4`                                            | Training batch size                                        |
 | `--save-steps`           | `100`                                          | Checkpoint save frequency                                  |
 | `--dataloader-workers`   | `0`                                            | Dataloader worker threads                                  |
-| `--platform`             | `h100gpu_platform`                             | OSMO platform (GPU pool)                                   |
+| `--platform`             | `gpu_platform`                                 | OSMO platform (GPU pool)                                   |
 | `--resume`               |                                                | Resume from latest checkpoint                              |
 | `--run-id-override`      |                                                | Resume a specific run by ID                                |
 | `--azure-upload`         |                                                | Mirror checkpoint to Azure ML                              |
