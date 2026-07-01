@@ -72,18 +72,18 @@ Even with the repository's deploy scripts, the perceived setup is a long, ordere
 
 A file-level survey of the eight domains separates shipped code from aspirational specification. The signal is unambiguous.
 
-| Domain               | Python | Shell | Terraform | Placeholder specs |
-|----------------------|--------|-------|-----------|-------------------|
-| `infrastructure`     | 0      | 18    | 80        | 0                 |
-| `data-management`    | 49     | 2     | 0         | 0                 |
-| `training`           | 23     | 8     | 0         | 0                 |
-| `evaluation`         | 15     | 7     | 0         | 0                 |
-| `data-pipeline`      | 3      | 1     | 0         | 0                 |
-| `synthetic-data`     | 0      | 0     | 0         | 2                 |
-| `fleet-deployment`   | 1      | 3     | 0         | 3                 |
-| `fleet-intelligence` | 0      | 4     | 0         | 4                 |
+| Domain | Python | Shell | Terraform | Placeholder specs |
+|---|---|---|---|---|
+| `infrastructure` | 0 | 18 | 80 | 0 |
+| `data-management` | 49 | 2 | 0 | 0 |
+| `training` | 23 | 8 | 0 | 0 |
+| `evaluation` | 15 | 7 | 0 | 0 |
+| `data-pipeline` | 3 | 1 | 0 | 0 |
+| `synthetic-data` | 0 | 0 | 0 | 2 |
+| `fleet-deployment` | 1 | 1 | 0 | 5 |
+| `fleet-intelligence` | 0 | 4 | 0 | 4 |
 
-The implemented center of gravity is **infrastructure provisioning plus training, data management, and evaluation tooling.** The two domains that carry the "fleet" identity — `fleet-deployment` and `fleet-intelligence` — hold **one Python file between them and seven placeholder specifications.** The headline identity of the project is its least-built region.
+The implemented center of gravity is **infrastructure provisioning plus training, data management, and evaluation tooling.** The two domains that carry the "fleet" identity — `fleet-deployment` and `fleet-intelligence` — hold **one Python file between them and nine placeholder specifications.** The headline identity of the project is its least-built region.
 
 Two consequences follow:
 
@@ -106,10 +106,10 @@ The capability to start small is present in the code. It is simply undocumented 
 
 The strongest objection to the current architecture is not "Arc and AKS are unnecessary." At multi-site scale they are genuinely needed. The objection is that the repository welds two different concerns together under one word.
 
-| Concern                        | What it is                                                          | Repository domain    | Maturity                       |
-|--------------------------------|---------------------------------------------------------------------|----------------------|--------------------------------|
-| Fleet delivery (control plane) | Multi-site connectivity, declarative delivery, safe-swap gating     | `fleet-deployment`   | 1 Python file, 3 placeholders  |
-| Fleet intelligence             | Drift detection, retraining triggers, aggregate telemetry analytics | `fleet-intelligence` | 0 Python files, 4 placeholders |
+| Concern | What it is | Repository domain | Maturity |
+|---|---|---|---|
+| Fleet delivery (control plane) | Multi-site connectivity, declarative delivery, safe-swap gating | `fleet-deployment` | 1 Python file, 5 placeholders |
+| Fleet intelligence | Drift detection, retraining triggers, aggregate telemetry analytics | `fleet-intelligence` | 0 Python files, 4 placeholders |
 
 The **fleet delivery** control plane is transport. Across sites you do not control, you need a reachability and identity broker (Arc), a runtime (AKS), and a delivery mechanism (FluxCD). This is, in effect, a `git push` that survives bad networks and locked-down sites, with a safety gate before a policy swaps on a physical arm. It is legitimate and necessary once an operator spans multiple sites, and aligns with how the Kubernetes ecosystem treats "fleet" — a delivery and reconciliation concern.
 
