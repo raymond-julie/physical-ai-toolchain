@@ -1,15 +1,15 @@
 # T3 — Production: Single-Site Declarative Deployment (Advanced)
 
-> [!NOTE]
-> **Advanced tier.** Most teams should run the full training lifecycle at [T0 — Dev](../tier-0-dev/README.md) or
-> [T2 — Pilot](../tier-2-pilot/README.md) first. T3 adds declarative, GitOps-style deployment at a
-> single site. It does **not** change how you train or validate.
-
 T3 proves that declarative, GitOps-style deployment does **not** require Azure Arc. Several robots at
 one site you control, all reachable from a single operator network, are reconciled to a Git-declared
 desired state by a single **local k3s node running FluxCD**. Arc is unnecessary precisely because
 there is only one site you can reach directly. Train and curate exactly as at
 [T2 — Pilot](../tier-2-pilot/README.md).
+
+> [!NOTE]
+> **Advanced tier.** Most teams should run the full training lifecycle at [T0 — Dev](../tier-0-dev/README.md) or
+> [T2 — Pilot](../tier-2-pilot/README.md) first. T3 adds declarative, GitOps-style deployment at a
+> single site. It does **not** change how you train or validate.
 
 ## 🧱 Minimum Infrastructure
 

@@ -349,7 +349,7 @@ The deploy scripts, Terraform modules, and training code do not need to change t
 
 ---
 
-## 7. Open Questions for Socialization
+## 7. Design Decisions
 
 1. **Default tier in docs.** Should the README and Quick Start default to T0 (Dev), with T2 (Pilot) as the "recommended production" path and T3–T5 (Production, Scale, Operate) clearly marked advanced? Do the stage names, Dev, Lab, Pilot, Production, Scale, and Operate, read correctly, and is pairing each name with its `T#` ID the right convention (stable IDs for boundary references, names for user-facing labels)?
 2. **Fleet vocabulary.** Does the repository adopt **fleet delivery** (T4 control plane) and **fleet intelligence** (T5 cognition) as distinct named concepts, reserve the word "fleet" exclusively for a fleet of robots, and retire the bare phrase "fleet management" (which collides with Azure Kubernetes Fleet Manager and the Kubernetes ecosystem's delivery-oriented use of "fleet")?

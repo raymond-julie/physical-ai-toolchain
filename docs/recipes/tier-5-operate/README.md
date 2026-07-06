@@ -1,14 +1,16 @@
 # T5 — Operate: Fleet Intelligence (Roadmap)
 
+T5 is the **fleet-intelligence** cognition layer that sits *above* the implemented
+[fleet-delivery control plane](../tier-4-scale/README.md) (T4): drift detection, automated retraining
+triggers, and aggregate telemetry analytics across a fleet of deployed robots. "Fleet" means a fleet
+of robots, not Kubernetes clusters.
+
 > [!WARNING]
 > **Roadmap direction, not shipped.** The fleet-intelligence domain is currently specified, with
 > implementation planned. Everything below describes *intended* capability, not working code.
 > Treat this tier as a roadmap placeholder, not an available feature.
 
-T5 is the **fleet-intelligence** cognition layer that sits *above* the implemented
-[fleet-delivery control plane](../tier-4-scale/README.md) (T4): drift detection, automated retraining
-triggers, and aggregate telemetry analytics across a fleet of deployed robots. "Fleet" means a fleet
-of robots, not Kubernetes clusters.
+<!-- markdownlint-disable-next-line MD028 -->
 
 > [!WARNING]
 > **Human-in-the-loop is the default; closed-loop retraining is a foot-gun.** Fully autonomous

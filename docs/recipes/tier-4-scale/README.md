@@ -1,15 +1,17 @@
 # T4 — Scale: Multi-Site Fleet Delivery (Advanced)
 
-> [!NOTE]
-> **Advanced tier.** This is the legitimate top of the *necessary* ladder. Reach it only when robots
-> span multiple sites you cannot directly reach. Single-site teams stay at
-> [T3 — Production](../tier-3-production/README.md).
-
 T4 is the **fleet-delivery** control plane: getting validated policies onto robots across sites you
 cannot directly reach, safely, with a gate before a policy swaps on a physical arm. The defining
 difference from T3 is **multiple sites** — which is exactly what makes **Azure Arc** necessary, as the
 cross-site reachability and identity broker that single-site k3s did not need. Here, "fleet" means a
 fleet of robots, not Kubernetes clusters.
+
+> [!NOTE]
+> **Advanced tier.** This is the legitimate top of the *necessary* ladder. Reach it only when robots
+> span multiple sites you cannot directly reach. Single-site teams stay at
+> [T3 — Production](../tier-3-production/README.md).
+
+<!-- markdownlint-disable-next-line MD028 -->
 
 > [!IMPORTANT]
 > T4 delivers and gates policies. It **excludes** drift detection, automated retraining, and aggregate
