@@ -12,21 +12,11 @@ Run any OSMO workflow from Azure Machine Learning — submit, monitor, and log m
 
 The proxy bridges standard Azure ML tooling with OSMO cluster orchestration. An AML command job pod submits the workflow to the OSMO REST API, polls until completion, and logs metrics back to AML Studio. Workflow YAMLs are never modified by the proxy.
 
-```text
-Developer / CI pipeline
-        │
-        ▼
-  az ml job create          ← standard Azure tooling, RBAC, audit trail
-        │
-        ▼
-  osmo_proxy.py             ← AML command job (runs inside AKS pod)
-        │  POST /api/pool/{pool}/workflow
-        │  GET  /api/workflow/{id}  (poll)
-        ▼
-  OSMO                      ← cluster orchestrator (KAI scheduling, NIM lifecycle)
-        │
-        ▼
-  AML Studio                ← metrics, tags, and artifact lineage logged back
+```mermaid
+flowchart TD
+    A["Developer / CI pipeline"] -->|az ml job create| B["osmo_proxy.py\n(AML command job, runs inside AKS pod)"]
+    B -->|"POST /api/pool/{pool}/workflow\nGET /api/workflow/{id} poll"| C["OSMO\n(KAI scheduling, NIM lifecycle)"]
+    B -->|metrics, tags, artifact lineage| D["AML Studio"]
 ```
 
 ## Prerequisites
