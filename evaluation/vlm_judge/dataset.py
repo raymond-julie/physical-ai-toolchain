@@ -40,7 +40,7 @@ class EpisodeRecord:
     def duration_s(self) -> float:
         if self.from_timestamp is not None and self.to_timestamp is not None:
             return float(self.to_timestamp - self.from_timestamp)
-        return float(self.length) / float(self.fps)
+        return self.length / self.fps
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +168,7 @@ def _iter_v21(spec: DatasetSpec, views: tuple[str, ...]) -> Iterator[EpisodeReco
 def _load_tasks_jsonl(path: Path) -> dict[int, str]:
     tasks: dict[int, str] = {}
     if not path.exists():
+        return {}
         return tasks
     with path.open() as fh:
         for line in fh:
