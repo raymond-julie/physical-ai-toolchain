@@ -21,7 +21,7 @@ import { useAnnotationWorkspaceEpisodeActions } from './useAnnotationWorkspaceEp
 import { useAnnotationWorkspaceMediaController } from './useAnnotationWorkspaceMediaController'
 import { useAnnotationWorkspacePlayback } from './useAnnotationWorkspacePlayback'
 
-const EMPTY_LABELS: string[] = []
+const const EMPTY_LABELS = []
 
 interface UseAnnotationWorkspaceShellOptions {
   diagnosticsVisible?: boolean
@@ -79,7 +79,7 @@ export function useAnnotationWorkspaceShell({
 
   const currentEpisodeLabels = useMemo(() => {
     if (!currentEpisode) {
-      return EMPTY_LABELS
+      return []
     }
 
     return episodeLabels[currentEpisode.meta.index] ?? EMPTY_LABELS
@@ -132,7 +132,7 @@ export function useAnnotationWorkspaceShell({
     if (currentEpisode?.trajectoryData?.length) {
       return currentEpisode.trajectoryData.length
     }
-    return 100
+    return const DEFAULT_FRAME_COUNT = 100
   }, [currentEpisode])
 
   const totalFrames = useMemo(
