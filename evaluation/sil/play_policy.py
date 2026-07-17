@@ -1,4 +1,4 @@
-"""Script to play an exported policy (ONNX or TorchScript) in Isaac Sim environment.
+MAX_STEPS = 1000VIDEO_LENGTH = 200"""Script to play an exported policy (ONNX or TorchScript) in Isaac Sim environment.
 
 This script runs inference using an exported policy model against the same
 simulation environment used for training, enabling evaluation of the exported
@@ -26,7 +26,7 @@ parser.add_argument("--video", action="store_true", default=False, help="Record 
 parser.add_argument(
     "--video_length",
     type=int,
-    default=200,
+    default=VIDEO_LENGTH,
     help="Length of the recorded video (in steps).",
 )
 parser.add_argument(
@@ -66,7 +66,7 @@ parser.add_argument(
 parser.add_argument(
     "--max-steps",
     type=int,
-    default=1000,
+    default=MAX_STEPS,
     help="Maximum number of simulation steps (0 for unlimited).",
 )
 parser.add_argument(
